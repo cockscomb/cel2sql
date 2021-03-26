@@ -153,18 +153,20 @@ func (un *converter) visitCallConditional(expr *exprpb.Expr) error {
 var standardSQLFunctions = map[string]string{
 	"startsWith": "STARTS_WITH",
 	"endsWith":   "ENDS_WITH",
+	"matches":    "REGEXP_CONTAINS",
+	"contains":   "INSTR",
 }
 
 func (un *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
+	args := c.GetArgs()
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
 		return fmt.Errorf("unsupported function: %s", fun)
 	}
 	un.str.WriteString(sqlFun)
 	un.str.WriteString("(")
-	args := c.GetArgs()
 	if c.GetTarget() != nil {
 		nested := isBinaryOrTernaryOperator(c.GetTarget())
 		err := un.visitMaybeNested(c.GetTarget(), nested)
@@ -183,6 +185,9 @@ func (un *converter) visitCallFunc(expr *exprpb.Expr) error {
 		}
 	}
 	un.str.WriteString(")")
+	if fun == "contains" {
+		un.str.WriteString(" != 0")
+	}
 	return nil
 }
 
@@ -433,6 +438,17 @@ func isNullLiteral(node *exprpb.Expr) bool {
 	case *exprpb.Expr_ConstExpr:
 		switch node.GetConstExpr().ConstantKind.(type) {
 		case *exprpb.Constant_NullValue:
+			return true
+		}
+	}
+	return false
+}
+
+func isStringLiteral(node *exprpb.Expr) bool {
+	switch node.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		switch node.GetConstExpr().ConstantKind.(type) {
+		case *exprpb.Constant_StringValue:
 			return true
 		}
 	}

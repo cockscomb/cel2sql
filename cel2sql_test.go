@@ -38,6 +38,24 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "endsWith",
+			args: args{source: `name.endsWith("z")`},
+			want: "ENDS_WITH(`name`, \"z\")",
+			wantErr: false,
+		},
+		{
+			name: "matches",
+			args: args{source: `name.matches("a+")`},
+			want: "REGEXP_CONTAINS(`name`, \"a+\")",
+			wantErr: false,
+		},
+		{
+			name: "contains",
+			args: args{source: `name.contains("abc")`},
+			want: "INSTR(`name`, \"abc\") != 0",
+			wantErr: false,
+		},
+		{
 			name: "&&",
 			args: args{source: `name.startsWith("a") && name.endsWith("z")`},
 			want: "STARTS_WITH(`name`, \"a\") AND ENDS_WITH(`name`, \"z\")",
@@ -93,7 +111,7 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 
 			got, err := cel2sql.Convert(ast.Expr())
 			if !tt.wantErr && assert.NoError(t, err) {
-				assert.Equal(t, got, tt.want)
+				assert.Equal(t, tt.want, got)
 			} else {
 				assert.Error(t, err)
 			}
