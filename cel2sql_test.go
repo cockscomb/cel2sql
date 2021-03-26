@@ -11,7 +11,7 @@ import (
 	"github.com/cockscomb/cel2sql"
 )
 
-func TestConvertCellToSqlCondition(t *testing.T) {
+func TestConvert(t *testing.T) {
 	env, err := cel.NewEnv(
 		cel.Declarations(
 			decls.NewVar("name", decls.String),
