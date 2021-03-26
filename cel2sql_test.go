@@ -38,6 +38,18 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "&&",
+			args: args{source: `name.startsWith("a") && name.endsWith("z")`},
+			want: "STARTS_WITH(`name`, \"a\") AND ENDS_WITH(`name`, \"z\")",
+			wantErr: false,
+		},
+		{
+			name: "||",
+			args: args{source: `name.startsWith("a") || name.endsWith("z")`},
+			want: "STARTS_WITH(`name`, \"a\") OR ENDS_WITH(`name`, \"z\")",
+			wantErr: false,
+		},
+		{
 			name: "==",
 			args: args{source: `name == "a"`},
 			want: "`name` = \"a\"",

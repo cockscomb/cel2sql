@@ -29,7 +29,10 @@ func init() {
 		"_<=_":       processRelationCall,
 		"_>_":        processRelationCall,
 		"_>=_":       processRelationCall,
+		"_&&_":       processRelationCall,
+		"_||_":       processRelationCall,
 		"startsWith": processFunctionCall,
+		"endsWith":   processFunctionCall,
 	}
 }
 
@@ -134,6 +137,10 @@ func processRelationCall(call *exprpb.Expr_Call, builder *strings.Builder) error
 		builder.WriteString(" > ")
 	case "_>=_":
 		builder.WriteString(" >= ")
+	case "_&&_":
+		builder.WriteString(" AND ")
+	case "_||_":
+		builder.WriteString(" OR ")
 	}
 	if err := processNode(rhs, builder); err != nil {
 		return err
@@ -146,6 +153,8 @@ func processFunctionCall(call *exprpb.Expr_Call, builder *strings.Builder) error
 	switch function {
 	case "startsWith":
 		builder.WriteString("STARTS_WITH")
+	case "endsWith":
+		builder.WriteString("ENDS_WITH")
 	}
 	builder.WriteString("(")
 	if err := processNode(call.GetTarget(), builder); err != nil {
