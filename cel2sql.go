@@ -2,6 +2,7 @@ package cel2sql
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -23,6 +24,11 @@ var callProcessors map[string]func(call *exprpb.Expr_Call, builder *strings.Buil
 func init() {
 	callProcessors = map[string]func(call *exprpb.Expr_Call, builder *strings.Builder) error{
 		"_==_":       processRelationCall,
+		"_!=_":       processRelationCall,
+		"_<_":        processRelationCall,
+		"_<=_":       processRelationCall,
+		"_>_":        processRelationCall,
+		"_>=_":       processRelationCall,
 		"startsWith": processFunctionCall,
 	}
 }
@@ -62,12 +68,18 @@ func processConst(literal *exprpb.Constant, builder *strings.Builder) error {
 		} else {
 			builder.WriteString("FALSE")
 		}
+	case *exprpb.Constant_DoubleValue:
+		builder.WriteString(strconv.FormatFloat(literal.GetDoubleValue(), 'f', -1, 64))
+	case *exprpb.Constant_Int64Value:
+		builder.WriteString(strconv.FormatInt(literal.GetInt64Value(), 10))
 	case *exprpb.Constant_NullValue:
 		builder.WriteString("NULL")
 	case *exprpb.Constant_StringValue:
 		builder.WriteString(`"`)
 		builder.WriteString(literal.GetStringValue())
 		builder.WriteString(`"`)
+	case *exprpb.Constant_Uint64Value:
+		builder.WriteString(strconv.FormatUint(literal.GetUint64Value(), 10))
 	default:
 		panic(fmt.Sprintf("unsupported literal: %+v", literal.ConstantKind))
 	}
@@ -108,6 +120,20 @@ func processRelationCall(call *exprpb.Expr_Call, builder *strings.Builder) error
 		} else {
 			builder.WriteString(" = ")
 		}
+	case "_!=_":
+		if isNullLiteral(lhs) || isNullLiteral(rhs) {
+			builder.WriteString(" IS NOT ")
+		} else {
+			builder.WriteString(" != ")
+		}
+	case "_<_":
+		builder.WriteString(" < ")
+	case "_<=_":
+		builder.WriteString(" <= ")
+	case "_>_":
+		builder.WriteString(" > ")
+	case "_>=_":
+		builder.WriteString(" >= ")
 	}
 	if err := processNode(rhs, builder); err != nil {
 		return err

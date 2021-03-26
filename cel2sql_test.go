@@ -15,6 +15,9 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 	env, err := cel.NewEnv(
 		cel.Declarations(
 			decls.NewVar("name", decls.String),
+			decls.NewVar("age", decls.Int),
+			decls.NewVar("adult", decls.Bool),
+			decls.NewVar("height", decls.Double),
 			decls.NewVar("null_var", decls.Null),
 		),
 	)
@@ -44,6 +47,24 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			name: "IS NULL",
 			args: args{source: `null_var == null`},
 			want: "`null_var` IS NULL",
+			wantErr: false,
+		},
+		{
+			name: "!=",
+			args: args{source: `adult != true`},
+			want: "`adult` != TRUE",
+			wantErr: false,
+		},
+		{
+			name: "<",
+			args: args{source: `age < 20`},
+			want: "`age` < 20",
+			wantErr: false,
+		},
+		{
+			name: ">=",
+			args: args{source: `height >= 1.6180339887`},
+			want: "`height` >= 1.6180339887",
 			wantErr: false,
 		},
 	}
