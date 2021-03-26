@@ -1,0 +1,91 @@
+package cel2sql
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/google/cel-go/cel"
+	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+)
+
+func ConvertCellToSqlCondition(ast *cel.Ast) (string, error) {
+	builder := strings.Builder{}
+
+	if err := processNode(ast.Expr(), &builder); err != nil {
+		return "", err
+	}
+
+	return builder.String(), nil
+}
+
+func processNode(node *exprpb.Expr, builder *strings.Builder) error {
+	switch node.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		return processConst(node.GetConstExpr(), builder)
+	case *exprpb.Expr_IdentExpr:
+		return processIdent(node.GetIdentExpr(), builder)
+	case *exprpb.Expr_CallExpr:
+		return processCall(node.GetCallExpr(), builder)
+	default:
+		panic(fmt.Sprintf("unsupported node: %+v", node.ExprKind))
+	}
+	return nil
+}
+
+func processNodes(nodes []*exprpb.Expr, builder *strings.Builder) error {
+	length := len(nodes)
+	for i, node := range nodes {
+		if err := processNode(node, builder); err != nil {
+			return err
+		}
+		if i < length-1 {
+			builder.WriteString(", ")
+		}
+	}
+	return nil
+}
+
+func processConst(literal *exprpb.Constant, builder *strings.Builder) error {
+	switch literal.ConstantKind.(type) {
+	case *exprpb.Constant_BoolValue:
+		if literal.GetBoolValue() {
+			builder.WriteString("TRUE")
+		} else {
+			builder.WriteString("FALSE")
+		}
+	case *exprpb.Constant_StringValue:
+		builder.WriteString(`"`)
+		builder.WriteString(literal.GetStringValue())
+		builder.WriteString(`"`)
+	default:
+		panic(fmt.Sprintf("unsupported literal: %+v", literal.ConstantKind))
+	}
+	return nil
+}
+
+func processIdent(ident *exprpb.Expr_Ident, builder *strings.Builder) error {
+	builder.WriteString("`")
+	builder.WriteString(ident.GetName())
+	builder.WriteString("`")
+	return nil
+}
+
+func processCall(call *exprpb.Expr_Call, builder *strings.Builder) error {
+	function := call.GetFunction()
+	switch function {
+	case "startsWith":
+		builder.WriteString("STARTS_WITH")
+	default:
+		return fmt.Errorf("unsupported function: %s", function)
+	}
+	builder.WriteString("(")
+	if err := processNode(call.GetTarget(), builder); err != nil {
+		return err
+	}
+	builder.WriteString(", ")
+	if err := processNodes(call.GetArgs(), builder); err != nil {
+		return err
+	}
+	builder.WriteString(")")
+	return nil
+}
