@@ -18,6 +18,15 @@ func ConvertCellToSqlCondition(ast *cel.Ast) (string, error) {
 	return builder.String(), nil
 }
 
+var callProcessors map[string]func(call *exprpb.Expr_Call, builder *strings.Builder) error
+
+func init() {
+	callProcessors = map[string]func(call *exprpb.Expr_Call, builder *strings.Builder) error{
+		"_==_":       processRelationCall,
+		"startsWith": processFunctionCall,
+	}
+}
+
 func processNode(node *exprpb.Expr, builder *strings.Builder) error {
 	switch node.ExprKind.(type) {
 	case *exprpb.Expr_ConstExpr:
@@ -53,6 +62,8 @@ func processConst(literal *exprpb.Constant, builder *strings.Builder) error {
 		} else {
 			builder.WriteString("FALSE")
 		}
+	case *exprpb.Constant_NullValue:
+		builder.WriteString("NULL")
 	case *exprpb.Constant_StringValue:
 		builder.WriteString(`"`)
 		builder.WriteString(literal.GetStringValue())
@@ -72,11 +83,43 @@ func processIdent(ident *exprpb.Expr_Ident, builder *strings.Builder) error {
 
 func processCall(call *exprpb.Expr_Call, builder *strings.Builder) error {
 	function := call.GetFunction()
+	processor, ok := callProcessors[function]
+	if !ok {
+		return fmt.Errorf("unsupported function: %s", function)
+	}
+	return processor(call, builder)
+}
+
+func processRelationCall(call *exprpb.Expr_Call, builder *strings.Builder) error {
+	function := call.GetFunction()
+	args := call.GetArgs()
+	if len(args) != 2 {
+		panic(fmt.Sprintf("unexpected argument count: %d", len(args)))
+	}
+	lhs := args[0]
+	rhs := args[1]
+	if err := processNode(lhs, builder); err != nil {
+		return err
+	}
+	switch function {
+	case "_==_":
+		if isNullLiteral(lhs) || isNullLiteral(rhs) {
+			builder.WriteString(" IS ")
+		} else {
+			builder.WriteString(" = ")
+		}
+	}
+	if err := processNode(rhs, builder); err != nil {
+		return err
+	}
+	return nil
+}
+
+func processFunctionCall(call *exprpb.Expr_Call, builder *strings.Builder) error {
+	function := call.GetFunction()
 	switch function {
 	case "startsWith":
 		builder.WriteString("STARTS_WITH")
-	default:
-		return fmt.Errorf("unsupported function: %s", function)
 	}
 	builder.WriteString("(")
 	if err := processNode(call.GetTarget(), builder); err != nil {
@@ -88,4 +131,15 @@ func processCall(call *exprpb.Expr_Call, builder *strings.Builder) error {
 	}
 	builder.WriteString(")")
 	return nil
+}
+
+func isNullLiteral(node *exprpb.Expr) bool {
+	switch node.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		switch node.GetConstExpr().ConstantKind.(type) {
+		case *exprpb.Constant_NullValue:
+			return true
+		}
+	}
+	return false
 }

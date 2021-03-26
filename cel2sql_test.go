@@ -15,6 +15,7 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 	env, err := cel.NewEnv(
 		cel.Declarations(
 			decls.NewVar("name", decls.String),
+			decls.NewVar("null_var", decls.Null),
 		),
 	)
 	require.NoError(t, err)
@@ -31,6 +32,18 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			name: "startsWith",
 			args: args{source: `name.startsWith("a")`},
 			want: "STARTS_WITH(`name`, \"a\")",
+			wantErr: false,
+		},
+		{
+			name: "==",
+			args: args{source: `name == "a"`},
+			want: "`name` = \"a\"",
+			wantErr: false,
+		},
+		{
+			name: "IS NULL",
+			args: args{source: `null_var == null`},
+			want: "`null_var` IS NULL",
 			wantErr: false,
 		},
 	}
