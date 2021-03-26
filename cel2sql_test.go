@@ -50,6 +50,12 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "()",
+			args: args{source: `age >= 10 && (name.startsWith("a") || name.endsWith("z"))`},
+			want: "`age` >= 10 AND (STARTS_WITH(`name`, \"a\") OR ENDS_WITH(`name`, \"z\"))",
+			wantErr: false,
+		},
+		{
 			name: "==",
 			args: args{source: `name == "a"`},
 			want: "`name` = \"a\"",
@@ -85,7 +91,7 @@ func TestConvertCellToSqlCondition(t *testing.T) {
 			ast, issues := env.Compile(tt.args.source)
 			require.Empty(t, issues)
 
-			got, err := cel2sql.ConvertCellToSqlCondition(ast)
+			got, err := cel2sql.Convert(ast.Expr())
 			if !tt.wantErr && assert.NoError(t, err) {
 				assert.Equal(t, got, tt.want)
 			} else {
