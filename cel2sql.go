@@ -107,9 +107,9 @@ func (un *converter) visitCallBinary(expr *exprpb.Expr) error {
 		return err
 	}
 	var operator string
-	if fun == operators.Equals && (isNullLiteral(lhs) || isNullLiteral(rhs)) {
+	if fun == operators.Equals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
 		operator = "IS"
-	} else if fun == operators.NotEquals && (isNullLiteral(lhs) || isNullLiteral(rhs)) {
+	} else if fun == operators.NotEquals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
 		operator = "IS NOT"
 	} else if op, found := standardSQLBinaryOperators[fun]; found {
 		operator = op
@@ -208,15 +208,23 @@ func (un *converter) visitCallIndex(expr *exprpb.Expr) error {
 	return nil
 }
 
+var standardSQLUnaryOperators = map[string]string{
+	operators.LogicalNot: "NOT ",
+}
+
 func (un *converter) visitCallUnary(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
-	unmangled, found := operators.FindReverse(fun)
-	if !found {
+	var operator string
+	if op, found := standardSQLUnaryOperators[fun]; found {
+		operator = op
+	} else if op, found := operators.FindReverse(fun); found {
+		operator = op
+	} else {
 		return fmt.Errorf("cannot unmangle operator: %s", fun)
 	}
-	un.str.WriteString(unmangled)
+	un.str.WriteString(operator)
 	nested := isComplexOperator(args[0])
 	return un.visitMaybeNested(args[0], nested)
 }
@@ -438,6 +446,17 @@ func isNullLiteral(node *exprpb.Expr) bool {
 	case *exprpb.Expr_ConstExpr:
 		switch node.GetConstExpr().ConstantKind.(type) {
 		case *exprpb.Constant_NullValue:
+			return true
+		}
+	}
+	return false
+}
+
+func isBoolLiteral(node *exprpb.Expr) bool {
+	switch node.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		switch node.GetConstExpr().ConstantKind.(type) {
+		case *exprpb.Constant_BoolValue:
 			return true
 		}
 	}

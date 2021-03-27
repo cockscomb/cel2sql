@@ -80,15 +80,21 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "!=",
+			args: args{source: `age != 20`},
+			want: "`age` != 20",
+			wantErr: false,
+		},
+		{
 			name: "IS NULL",
 			args: args{source: `null_var == null`},
 			want: "`null_var` IS NULL",
 			wantErr: false,
 		},
 		{
-			name: "!=",
+			name: "IS NOT TRUE",
 			args: args{source: `adult != true`},
-			want: "`adult` != TRUE",
+			want: "`adult` IS NOT TRUE",
 			wantErr: false,
 		},
 		{
@@ -101,6 +107,18 @@ func TestConvert(t *testing.T) {
 			name: ">=",
 			args: args{source: `height >= 1.6180339887`},
 			want: "`height` >= 1.6180339887",
+			wantErr: false,
+		},
+		{
+			name: "NOT",
+			args: args{source: `!adult`},
+			want: "NOT `adult`",
+			wantErr: false,
+		},
+		{
+			name: "-",
+			args: args{source: `-1`},
+			want: "-1",
 			wantErr: false,
 		},
 	}
