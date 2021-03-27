@@ -74,6 +74,12 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "IF",
+			args: args{source: `name == "a" ? "a" : "b"`},
+			want: "IF(`name` = \"a\", \"a\", \"b\")",
+			wantErr: false,
+		},
+		{
 			name: "==",
 			args: args{source: `name == "a"`},
 			want: "`name` = \"a\"",

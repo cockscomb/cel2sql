@@ -127,27 +127,20 @@ func (un *converter) visitCallBinary(expr *exprpb.Expr) error {
 func (un *converter) visitCallConditional(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
-	// add parens if operand is a conditional itself.
-	nested := isSamePrecedence(operators.Conditional, args[0]) ||
-		isComplexOperator(args[0])
-	err := un.visitMaybeNested(args[0], nested)
-	if err != nil {
+	un.str.WriteString("IF(")
+	if err := un.visit(args[0]); err != nil {
 		return err
 	}
-	un.str.WriteString(" ? ")
-	// add parens if operand is a conditional itself.
-	nested = isSamePrecedence(operators.Conditional, args[1]) ||
-		isComplexOperator(args[1])
-	err = un.visitMaybeNested(args[1], nested)
-	if err != nil {
+	un.str.WriteString(", ")
+	if err := un.visit(args[1]); err != nil {
 		return err
 	}
-	un.str.WriteString(" : ")
-	// add parens if operand is a conditional itself.
-	nested = isSamePrecedence(operators.Conditional, args[2]) ||
-		isComplexOperator(args[2])
-
-	return un.visitMaybeNested(args[2], nested)
+	un.str.WriteString(", ")
+	if err := un.visit(args[2]); err != nil {
+		return nil
+	}
+	un.str.WriteString(")")
+	return nil
 }
 
 var standardSQLFunctions = map[string]string{
