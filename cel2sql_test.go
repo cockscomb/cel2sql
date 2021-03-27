@@ -127,6 +127,12 @@ func TestConvert(t *testing.T) {
 			want: "-1",
 			wantErr: false,
 		},
+		{
+			name: "[]",
+			args: args{source: `[1, 2, 3][0] == 1`},
+			want: "[1, 2, 3][OFFSET(0)] = 1",
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

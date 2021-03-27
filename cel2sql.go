@@ -192,12 +192,12 @@ func (un *converter) visitCallIndex(expr *exprpb.Expr) error {
 	if err != nil {
 		return err
 	}
-	un.str.WriteString("[")
+	un.str.WriteString("[OFFSET(")
 	err = un.visit(args[1])
 	if err != nil {
 		return err
 	}
-	un.str.WriteString("]")
+	un.str.WriteString(")]")
 	return nil
 }
 
