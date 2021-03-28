@@ -165,6 +165,24 @@ func TestConvert(t *testing.T) {
 			want:    "",
 			wantErr: true,
 		},
+		{
+			name:    "add",
+			args:    args{source: `1 + 2 == 3`},
+			want:    "1 + 2 = 3",
+			wantErr: false,
+		},
+		{
+			name:    "concatString",
+			args:    args{source: `"a" + "b" == "ab"`},
+			want:    "\"a\" || \"b\" = \"ab\"",
+			wantErr: false,
+		},
+		{
+			name:    "concatList",
+			args:    args{source: `1 in [1] + [2, 3]`},
+			want:    "1 IN UNNEST([1] || [2, 3])",
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

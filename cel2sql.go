@@ -94,6 +94,7 @@ var standardSQLBinaryOperators = map[string]string{
 	operators.LogicalAnd: "AND",
 	operators.LogicalOr:  "OR",
 	operators.Equals:     "=",
+	operators.In:         "IN",
 }
 
 func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
@@ -110,12 +111,19 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	if !rhsParen && isLeftRecursive(fun) {
 		rhsParen = isSamePrecedence(fun, rhs)
 	}
-	err := con.visitMaybeNested(lhs, lhsParen)
-	if err != nil {
+	if err := con.visitMaybeNested(lhs, lhsParen); err != nil {
 		return err
 	}
 	var operator string
-	if fun == operators.Equals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
+	lhsType := con.getType(lhs)
+	rhsType := con.getType(rhs)
+	if fun == operators.Add && (lhsType.GetPrimitive() == exprpb.Type_STRING && rhsType.GetPrimitive() == exprpb.Type_STRING) {
+		operator = "||"
+	} else if fun == operators.Add && (rhsType.GetPrimitive() == exprpb.Type_BYTES && lhsType.GetPrimitive() == exprpb.Type_BYTES) {
+		operator = "||"
+	} else if fun == operators.Add && (isListType(lhsType) && isListType(rhsType)) {
+		operator = "||"
+	} else if fun == operators.Equals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
 		operator = "IS"
 	} else if fun == operators.NotEquals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
 		operator = "IS NOT"
@@ -129,7 +137,16 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	con.str.WriteString(" ")
 	con.str.WriteString(operator)
 	con.str.WriteString(" ")
-	return con.visitMaybeNested(rhs, rhsParen)
+	if fun == operators.In && isListType(rhsType) {
+		con.str.WriteString("UNNEST(")
+	}
+	if err := con.visitMaybeNested(rhs, rhsParen); err != nil {
+		return err
+	}
+	if fun == operators.In && isListType(rhsType) {
+		con.str.WriteString(")")
+	}
+	return nil
 }
 
 func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
@@ -193,7 +210,7 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 }
 
 func (con *converter) visitCallIndex(expr *exprpb.Expr) error {
-	if con.isMap(expr.GetCallExpr().GetArgs()[0]) {
+	if isMapType(con.getType(expr.GetCallExpr().GetArgs()[0])) {
 		return con.visitCallMapIndex(expr)
 	} else {
 		return con.visitCallListIndex(expr)
@@ -406,12 +423,22 @@ func (con *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
 	return nil
 }
 
-func (con *converter) isMap(node *exprpb.Expr) bool {
-	if typ, ok := con.typeMap[node.GetId()]; ok {
-		switch typ.TypeKind.(type) {
-		case *exprpb.Type_MapType_:
-			return true
-		}
+func (con *converter) getType(node *exprpb.Expr) *exprpb.Type {
+	return con.typeMap[node.GetId()]
+}
+
+func isMapType(typ *exprpb.Type) bool {
+	switch typ.TypeKind.(type) {
+	case *exprpb.Type_MapType_:
+		return true
+	}
+	return false
+}
+
+func isListType(typ *exprpb.Type) bool {
+	switch typ.TypeKind.(type) {
+	case *exprpb.Type_ListType_:
+		return true
 	}
 	return false
 }
