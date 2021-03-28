@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
@@ -12,17 +13,23 @@ import (
 // Implementations based on `google/cel-go`'s unparser
 // https://github.com/google/cel-go/blob/master/parser/unparser.go
 
-func Convert(expr *exprpb.Expr) (string, error) {
-	un := &converter{}
-	err := un.visit(expr)
+func Convert(ast *cel.Ast) (string, error) {
+	checkedExpr, err := cel.AstToCheckedExpr(ast)
 	if err != nil {
+		return "", err
+	}
+	un := &converter{
+		typeMap: checkedExpr.TypeMap,
+	}
+	if err := un.visit(checkedExpr.Expr); err != nil {
 		return "", err
 	}
 	return un.str.String(), nil
 }
 
 type converter struct {
-	str strings.Builder
+	str     strings.Builder
+	typeMap map[int64]*exprpb.Type
 }
 
 func (un *converter) visit(expr *exprpb.Expr) error {
@@ -185,16 +192,37 @@ func (un *converter) visitCallFunc(expr *exprpb.Expr) error {
 }
 
 func (un *converter) visitCallIndex(expr *exprpb.Expr) error {
+	if un.isMap(expr.GetCallExpr().GetArgs()[0]) {
+		return un.visitCallMapIndex(expr)
+	} else {
+		return un.visitCallListIndex(expr)
+	}
+}
+
+func (un *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	nested := isBinaryOrTernaryOperator(args[0])
-	err := un.visitMaybeNested(args[0], nested)
-	if err != nil {
+	if err := un.visitMaybeNested(args[0], nested); err != nil {
+		return err
+	}
+	un.str.WriteString(".")
+	if !isStringLiteral(args[1]) {
+		return fmt.Errorf("unsupported key: %v", args[1])
+	}
+	un.str.WriteString(args[1].GetConstExpr().GetStringValue())
+	return nil
+}
+
+func (un *converter) visitCallListIndex(expr *exprpb.Expr) error {
+	c := expr.GetCallExpr()
+	args := c.GetArgs()
+	nested := isBinaryOrTernaryOperator(args[0])
+	if err := un.visitMaybeNested(args[0], nested); err != nil {
 		return err
 	}
 	un.str.WriteString("[OFFSET(")
-	err = un.visit(args[1])
-	if err != nil {
+	if err := un.visit(args[1]); err != nil {
 		return err
 	}
 	un.str.WriteString(")]")
@@ -339,24 +367,23 @@ func (un *converter) visitStructMsg(expr *exprpb.Expr) error {
 func (un *converter) visitStructMap(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
-	un.str.WriteString("{")
+	un.str.WriteString("STRUCT(")
 	for i, entry := range entries {
-		k := entry.GetMapKey()
-		err := un.visit(k)
-		if err != nil {
-			return err
-		}
-		un.str.WriteString(": ")
 		v := entry.GetValue()
-		err = un.visit(v)
-		if err != nil {
+		if err := un.visit(v); err != nil {
 			return err
 		}
+		un.str.WriteString(" AS ")
+		k := entry.GetMapKey()
+		if !isStringLiteral(k) {
+			return fmt.Errorf("unsupported key: %v", expr)
+		}
+		un.str.WriteString(k.GetConstExpr().GetStringValue())
 		if i < len(entries)-1 {
 			un.str.WriteString(", ")
 		}
 	}
-	un.str.WriteString("}")
+	un.str.WriteString(")")
 	return nil
 }
 
@@ -372,6 +399,16 @@ func (un *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
 		un.str.WriteString(")")
 	}
 	return nil
+}
+
+func (un *converter) isMap(node *exprpb.Expr) bool {
+	if typ, ok := un.typeMap[node.GetId()]; ok {
+		switch typ.TypeKind.(type) {
+		case *exprpb.Type_MapType_:
+			return true
+		}
+	}
+	return false
 }
 
 // isLeftRecursive indicates whether the parser resolves the call in a left-recursive manner as
