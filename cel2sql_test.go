@@ -139,6 +139,18 @@ func TestConvert(t *testing.T) {
 			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).one",
 			wantErr: false,
 		},
+		{
+			name:    "invalidFieldType",
+			args:    args{source: `{1: 1}[1]`},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name:    "invalidFieldName",
+			args:    args{source: `{"on e": 1}["on e"]`},
+			want:    "",
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -2,6 +2,7 @@ package cel2sql
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -202,27 +203,31 @@ func (con *converter) visitCallIndex(expr *exprpb.Expr) error {
 func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
-	nested := isBinaryOrTernaryOperator(args[0])
-	if err := con.visitMaybeNested(args[0], nested); err != nil {
+	m := args[0]
+	nested := isBinaryOrTernaryOperator(m)
+	if err := con.visitMaybeNested(m, nested); err != nil {
 		return err
 	}
 	con.str.WriteString(".")
-	if !isStringLiteral(args[1]) {
-		return fmt.Errorf("unsupported key: %v", args[1])
+	fieldName, err := extractFieldName(args[1])
+	if err != nil {
+		return err
 	}
-	con.str.WriteString(args[1].GetConstExpr().GetStringValue())
+	con.str.WriteString(fieldName)
 	return nil
 }
 
 func (con *converter) visitCallListIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
-	nested := isBinaryOrTernaryOperator(args[0])
-	if err := con.visitMaybeNested(args[0], nested); err != nil {
+	l := args[0]
+	nested := isBinaryOrTernaryOperator(l)
+	if err := con.visitMaybeNested(l, nested); err != nil {
 		return err
 	}
 	con.str.WriteString("[OFFSET(")
-	if err := con.visit(args[1]); err != nil {
+	index := args[1]
+	if err := con.visit(index); err != nil {
 		return err
 	}
 	con.str.WriteString(")]")
@@ -374,11 +379,11 @@ func (con *converter) visitStructMap(expr *exprpb.Expr) error {
 			return err
 		}
 		con.str.WriteString(" AS ")
-		k := entry.GetMapKey()
-		if !isStringLiteral(k) {
-			return fmt.Errorf("unsupported key: %v", expr)
+		fieldName, err := extractFieldName(entry.GetMapKey())
+		if err != nil {
+			return err
 		}
-		con.str.WriteString(k.GetConstExpr().GetStringValue())
+		con.str.WriteString(fieldName)
 		if i < len(entries)-1 {
 			con.str.WriteString(", ")
 		}
@@ -512,4 +517,24 @@ func bytesToOctets(byteVal []byte) string {
 		fmt.Fprintf(&b, "\\%03o", c)
 	}
 	return b.String()
+}
+
+var fieldNameRegexp = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,127}$`)
+
+func validateFieldName(name string) error {
+	if !fieldNameRegexp.MatchString(name) {
+		return fmt.Errorf("invalid field name \"%s\"", name)
+	}
+	return nil
+}
+
+func extractFieldName(node *exprpb.Expr) (string, error) {
+	if !isStringLiteral(node) {
+		return "", fmt.Errorf("unsupported type: %v", node)
+	}
+	fieldName := node.GetConstExpr().GetStringValue()
+	if err := validateFieldName(fieldName); err != nil {
+		return "", err
+	}
+	return fieldName, nil
 }
