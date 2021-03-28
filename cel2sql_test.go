@@ -18,6 +18,8 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("age", decls.Int),
 			decls.NewVar("adult", decls.Bool),
 			decls.NewVar("height", decls.Double),
+			decls.NewVar("string_list", decls.NewListType(decls.String)),
+			decls.NewVar("string_int_map", decls.NewMapType(decls.String, decls.Int)),
 			decls.NewVar("null_var", decls.Null),
 		),
 	)
@@ -134,9 +136,21 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "list_var",
+			args:    args{source: `string_list[0] == "a"`},
+			want:    "`string_list`[OFFSET(0)] = \"a\"",
+			wantErr: false,
+		},
+		{
 			name:    "map",
-			args:    args{source: `{"one": 1, "two": 2, "three": 3}["one"]`},
-			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).one",
+			args:    args{source: `{"one": 1, "two": 2, "three": 3}["one"] == 1`},
+			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).one = 1",
+			wantErr: false,
+		},
+		{
+			name:    "map_var",
+			args:    args{source: `string_int_map["one"] == 1`},
+			want:    "`string_int_map`.one = 1",
 			wantErr: false,
 		},
 		{
