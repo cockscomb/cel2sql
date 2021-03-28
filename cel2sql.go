@@ -32,40 +32,40 @@ type converter struct {
 	typeMap map[int64]*exprpb.Type
 }
 
-func (un *converter) visit(expr *exprpb.Expr) error {
+func (con *converter) visit(expr *exprpb.Expr) error {
 	switch expr.ExprKind.(type) {
 	case *exprpb.Expr_CallExpr:
-		return un.visitCall(expr)
+		return con.visitCall(expr)
 	// TODO: Comprehensions are currently not supported.
 	case *exprpb.Expr_ComprehensionExpr:
-		return un.visitComprehension(expr)
+		return con.visitComprehension(expr)
 	case *exprpb.Expr_ConstExpr:
-		return un.visitConst(expr)
+		return con.visitConst(expr)
 	case *exprpb.Expr_IdentExpr:
-		return un.visitIdent(expr)
+		return con.visitIdent(expr)
 	case *exprpb.Expr_ListExpr:
-		return un.visitList(expr)
+		return con.visitList(expr)
 	case *exprpb.Expr_SelectExpr:
-		return un.visitSelect(expr)
+		return con.visitSelect(expr)
 	case *exprpb.Expr_StructExpr:
-		return un.visitStruct(expr)
+		return con.visitStruct(expr)
 	}
 	return fmt.Errorf("unsupported expr: %v", expr)
 }
 
-func (un *converter) visitCall(expr *exprpb.Expr) error {
+func (con *converter) visitCall(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	switch fun {
 	// ternary operator
 	case operators.Conditional:
-		return un.visitCallConditional(expr)
+		return con.visitCallConditional(expr)
 	// index operator
 	case operators.Index:
-		return un.visitCallIndex(expr)
+		return con.visitCallIndex(expr)
 	// unary operators
 	case operators.LogicalNot, operators.Negate:
-		return un.visitCallUnary(expr)
+		return con.visitCallUnary(expr)
 	// binary operators
 	case operators.Add,
 		operators.Divide,
@@ -82,10 +82,10 @@ func (un *converter) visitCall(expr *exprpb.Expr) error {
 		operators.NotEquals,
 		operators.OldIn,
 		operators.Subtract:
-		return un.visitCallBinary(expr)
+		return con.visitCallBinary(expr)
 	// standard function calls.
 	default:
-		return un.visitCallFunc(expr)
+		return con.visitCallFunc(expr)
 	}
 }
 
@@ -95,7 +95,7 @@ var standardSQLBinaryOperators = map[string]string{
 	operators.Equals:     "=",
 }
 
-func (un *converter) visitCallBinary(expr *exprpb.Expr) error {
+func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
@@ -109,7 +109,7 @@ func (un *converter) visitCallBinary(expr *exprpb.Expr) error {
 	if !rhsParen && isLeftRecursive(fun) {
 		rhsParen = isSamePrecedence(fun, rhs)
 	}
-	err := un.visitMaybeNested(lhs, lhsParen)
+	err := con.visitMaybeNested(lhs, lhsParen)
 	if err != nil {
 		return err
 	}
@@ -125,28 +125,28 @@ func (un *converter) visitCallBinary(expr *exprpb.Expr) error {
 	} else {
 		return fmt.Errorf("cannot unmangle operator: %s", fun)
 	}
-	un.str.WriteString(" ")
-	un.str.WriteString(operator)
-	un.str.WriteString(" ")
-	return un.visitMaybeNested(rhs, rhsParen)
+	con.str.WriteString(" ")
+	con.str.WriteString(operator)
+	con.str.WriteString(" ")
+	return con.visitMaybeNested(rhs, rhsParen)
 }
 
-func (un *converter) visitCallConditional(expr *exprpb.Expr) error {
+func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
-	un.str.WriteString("IF(")
-	if err := un.visit(args[0]); err != nil {
+	con.str.WriteString("IF(")
+	if err := con.visit(args[0]); err != nil {
 		return err
 	}
-	un.str.WriteString(", ")
-	if err := un.visit(args[1]); err != nil {
+	con.str.WriteString(", ")
+	if err := con.visit(args[1]); err != nil {
 		return err
 	}
-	un.str.WriteString(", ")
-	if err := un.visit(args[2]); err != nil {
+	con.str.WriteString(", ")
+	if err := con.visit(args[2]); err != nil {
 		return nil
 	}
-	un.str.WriteString(")")
+	con.str.WriteString(")")
 	return nil
 }
 
@@ -157,7 +157,7 @@ var standardSQLFunctions = map[string]string{
 	"contains":   "INSTR",
 }
 
-func (un *converter) visitCallFunc(expr *exprpb.Expr) error {
+func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
@@ -165,67 +165,67 @@ func (un *converter) visitCallFunc(expr *exprpb.Expr) error {
 	if !ok {
 		return fmt.Errorf("unsupported function: %s", fun)
 	}
-	un.str.WriteString(sqlFun)
-	un.str.WriteString("(")
+	con.str.WriteString(sqlFun)
+	con.str.WriteString("(")
 	if c.GetTarget() != nil {
 		nested := isBinaryOrTernaryOperator(c.GetTarget())
-		err := un.visitMaybeNested(c.GetTarget(), nested)
+		err := con.visitMaybeNested(c.GetTarget(), nested)
 		if err != nil {
 			return err
 		}
-		un.str.WriteString(", ")
+		con.str.WriteString(", ")
 	}
 	for i, arg := range args {
-		err := un.visit(arg)
+		err := con.visit(arg)
 		if err != nil {
 			return err
 		}
 		if i < len(args)-1 {
-			un.str.WriteString(", ")
+			con.str.WriteString(", ")
 		}
 	}
-	un.str.WriteString(")")
+	con.str.WriteString(")")
 	if fun == "contains" {
-		un.str.WriteString(" != 0")
+		con.str.WriteString(" != 0")
 	}
 	return nil
 }
 
-func (un *converter) visitCallIndex(expr *exprpb.Expr) error {
-	if un.isMap(expr.GetCallExpr().GetArgs()[0]) {
-		return un.visitCallMapIndex(expr)
+func (con *converter) visitCallIndex(expr *exprpb.Expr) error {
+	if con.isMap(expr.GetCallExpr().GetArgs()[0]) {
+		return con.visitCallMapIndex(expr)
 	} else {
-		return un.visitCallListIndex(expr)
+		return con.visitCallListIndex(expr)
 	}
 }
 
-func (un *converter) visitCallMapIndex(expr *exprpb.Expr) error {
+func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	nested := isBinaryOrTernaryOperator(args[0])
-	if err := un.visitMaybeNested(args[0], nested); err != nil {
+	if err := con.visitMaybeNested(args[0], nested); err != nil {
 		return err
 	}
-	un.str.WriteString(".")
+	con.str.WriteString(".")
 	if !isStringLiteral(args[1]) {
 		return fmt.Errorf("unsupported key: %v", args[1])
 	}
-	un.str.WriteString(args[1].GetConstExpr().GetStringValue())
+	con.str.WriteString(args[1].GetConstExpr().GetStringValue())
 	return nil
 }
 
-func (un *converter) visitCallListIndex(expr *exprpb.Expr) error {
+func (con *converter) visitCallListIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	nested := isBinaryOrTernaryOperator(args[0])
-	if err := un.visitMaybeNested(args[0], nested); err != nil {
+	if err := con.visitMaybeNested(args[0], nested); err != nil {
 		return err
 	}
-	un.str.WriteString("[OFFSET(")
-	if err := un.visit(args[1]); err != nil {
+	con.str.WriteString("[OFFSET(")
+	if err := con.visit(args[1]); err != nil {
 		return err
 	}
-	un.str.WriteString(")]")
+	con.str.WriteString(")]")
 	return nil
 }
 
@@ -233,7 +233,7 @@ var standardSQLUnaryOperators = map[string]string{
 	operators.LogicalNot: "NOT ",
 }
 
-func (un *converter) visitCallUnary(expr *exprpb.Expr) error {
+func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
@@ -245,164 +245,164 @@ func (un *converter) visitCallUnary(expr *exprpb.Expr) error {
 	} else {
 		return fmt.Errorf("cannot unmangle operator: %s", fun)
 	}
-	un.str.WriteString(operator)
+	con.str.WriteString(operator)
 	nested := isComplexOperator(args[0])
-	return un.visitMaybeNested(args[0], nested)
+	return con.visitMaybeNested(args[0], nested)
 }
 
-func (un *converter) visitComprehension(expr *exprpb.Expr) error {
+func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	// TODO: introduce a macro expansion map between the top-level comprehension id and the
 	// function call that the macro replaces.
 	return fmt.Errorf("unimplemented : %v", expr)
 }
 
-func (un *converter) visitConst(expr *exprpb.Expr) error {
+func (con *converter) visitConst(expr *exprpb.Expr) error {
 	c := expr.GetConstExpr()
 	switch c.ConstantKind.(type) {
 	case *exprpb.Constant_BoolValue:
 		if c.GetBoolValue() {
-			un.str.WriteString("TRUE")
+			con.str.WriteString("TRUE")
 		} else {
-			un.str.WriteString("FALSE")
+			con.str.WriteString("FALSE")
 		}
 	case *exprpb.Constant_BytesValue:
 		b := c.GetBytesValue()
-		un.str.WriteString(`b"`)
-		un.str.WriteString(bytesToOctets(b))
-		un.str.WriteString(`"`)
+		con.str.WriteString(`b"`)
+		con.str.WriteString(bytesToOctets(b))
+		con.str.WriteString(`"`)
 	case *exprpb.Constant_DoubleValue:
 		d := strconv.FormatFloat(c.GetDoubleValue(), 'g', -1, 64)
-		un.str.WriteString(d)
+		con.str.WriteString(d)
 	case *exprpb.Constant_Int64Value:
 		i := strconv.FormatInt(c.GetInt64Value(), 10)
-		un.str.WriteString(i)
+		con.str.WriteString(i)
 	case *exprpb.Constant_NullValue:
-		un.str.WriteString("NULL")
+		con.str.WriteString("NULL")
 	case *exprpb.Constant_StringValue:
-		un.str.WriteString(strconv.Quote(c.GetStringValue()))
+		con.str.WriteString(strconv.Quote(c.GetStringValue()))
 	case *exprpb.Constant_Uint64Value:
 		ui := strconv.FormatUint(c.GetUint64Value(), 10)
-		un.str.WriteString(ui)
+		con.str.WriteString(ui)
 	default:
 		return fmt.Errorf("unimplemented : %v", expr)
 	}
 	return nil
 }
 
-func (un *converter) visitIdent(expr *exprpb.Expr) error {
-	un.str.WriteString("`")
-	un.str.WriteString(expr.GetIdentExpr().GetName())
-	un.str.WriteString("`")
+func (con *converter) visitIdent(expr *exprpb.Expr) error {
+	con.str.WriteString("`")
+	con.str.WriteString(expr.GetIdentExpr().GetName())
+	con.str.WriteString("`")
 	return nil
 }
 
-func (un *converter) visitList(expr *exprpb.Expr) error {
+func (con *converter) visitList(expr *exprpb.Expr) error {
 	l := expr.GetListExpr()
 	elems := l.GetElements()
-	un.str.WriteString("[")
+	con.str.WriteString("[")
 	for i, elem := range elems {
-		err := un.visit(elem)
+		err := con.visit(elem)
 		if err != nil {
 			return err
 		}
 		if i < len(elems)-1 {
-			un.str.WriteString(", ")
+			con.str.WriteString(", ")
 		}
 	}
-	un.str.WriteString("]")
+	con.str.WriteString("]")
 	return nil
 }
 
-func (un *converter) visitSelect(expr *exprpb.Expr) error {
+func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	sel := expr.GetSelectExpr()
 	// handle the case when the select expression was generated by the has() macro.
 	if sel.GetTestOnly() {
-		un.str.WriteString("has(")
+		con.str.WriteString("has(")
 	}
 	nested := !sel.GetTestOnly() && isBinaryOrTernaryOperator(sel.GetOperand())
-	err := un.visitMaybeNested(sel.GetOperand(), nested)
+	err := con.visitMaybeNested(sel.GetOperand(), nested)
 	if err != nil {
 		return err
 	}
-	un.str.WriteString(".")
-	un.str.WriteString(sel.GetField())
+	con.str.WriteString(".")
+	con.str.WriteString(sel.GetField())
 	if sel.GetTestOnly() {
-		un.str.WriteString(")")
+		con.str.WriteString(")")
 	}
 	return nil
 }
 
-func (un *converter) visitStruct(expr *exprpb.Expr) error {
+func (con *converter) visitStruct(expr *exprpb.Expr) error {
 	s := expr.GetStructExpr()
 	// If the message name is non-empty, then this should be treated as message construction.
 	if s.GetMessageName() != "" {
-		return un.visitStructMsg(expr)
+		return con.visitStructMsg(expr)
 	}
 	// Otherwise, build a map.
-	return un.visitStructMap(expr)
+	return con.visitStructMap(expr)
 }
 
-func (un *converter) visitStructMsg(expr *exprpb.Expr) error {
+func (con *converter) visitStructMsg(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
-	un.str.WriteString(m.GetMessageName())
-	un.str.WriteString("{")
+	con.str.WriteString(m.GetMessageName())
+	con.str.WriteString("{")
 	for i, entry := range entries {
 		f := entry.GetFieldKey()
-		un.str.WriteString(f)
-		un.str.WriteString(": ")
+		con.str.WriteString(f)
+		con.str.WriteString(": ")
 		v := entry.GetValue()
-		err := un.visit(v)
+		err := con.visit(v)
 		if err != nil {
 			return err
 		}
 		if i < len(entries)-1 {
-			un.str.WriteString(", ")
+			con.str.WriteString(", ")
 		}
 	}
-	un.str.WriteString("}")
+	con.str.WriteString("}")
 	return nil
 }
 
-func (un *converter) visitStructMap(expr *exprpb.Expr) error {
+func (con *converter) visitStructMap(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
-	un.str.WriteString("STRUCT(")
+	con.str.WriteString("STRUCT(")
 	for i, entry := range entries {
 		v := entry.GetValue()
-		if err := un.visit(v); err != nil {
+		if err := con.visit(v); err != nil {
 			return err
 		}
-		un.str.WriteString(" AS ")
+		con.str.WriteString(" AS ")
 		k := entry.GetMapKey()
 		if !isStringLiteral(k) {
 			return fmt.Errorf("unsupported key: %v", expr)
 		}
-		un.str.WriteString(k.GetConstExpr().GetStringValue())
+		con.str.WriteString(k.GetConstExpr().GetStringValue())
 		if i < len(entries)-1 {
-			un.str.WriteString(", ")
+			con.str.WriteString(", ")
 		}
 	}
-	un.str.WriteString(")")
+	con.str.WriteString(")")
 	return nil
 }
 
-func (un *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
+func (con *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
 	if nested {
-		un.str.WriteString("(")
+		con.str.WriteString("(")
 	}
-	err := un.visit(expr)
+	err := con.visit(expr)
 	if err != nil {
 		return err
 	}
 	if nested {
-		un.str.WriteString(")")
+		con.str.WriteString(")")
 	}
 	return nil
 }
 
-func (un *converter) isMap(node *exprpb.Expr) bool {
-	if typ, ok := un.typeMap[node.GetId()]; ok {
+func (con *converter) isMap(node *exprpb.Expr) bool {
+	if typ, ok := con.typeMap[node.GetId()]; ok {
 		switch typ.TypeKind.(type) {
 		case *exprpb.Type_MapType_:
 			return true
