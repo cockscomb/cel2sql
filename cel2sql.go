@@ -225,12 +225,13 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	if err := con.visitMaybeNested(m, nested); err != nil {
 		return err
 	}
-	con.str.WriteString(".")
 	fieldName, err := extractFieldName(args[1])
 	if err != nil {
 		return err
 	}
+	con.str.WriteString(".`")
 	con.str.WriteString(fieldName)
+	con.str.WriteString("`")
 	return nil
 }
 
@@ -346,8 +347,9 @@ func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	if err != nil {
 		return err
 	}
-	con.str.WriteString(".")
+	con.str.WriteString(".`")
 	con.str.WriteString(sel.GetField())
+	con.str.WriteString("`")
 	if sel.GetTestOnly() {
 		con.str.WriteString(")")
 	}

@@ -21,6 +21,7 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("string_list", decls.NewListType(decls.String)),
 			decls.NewVar("string_int_map", decls.NewMapType(decls.String, decls.Int)),
 			decls.NewVar("null_var", decls.Null),
+			decls.NewVar("user", decls.Dyn),
 		),
 	)
 	require.NoError(t, err)
@@ -33,6 +34,12 @@ func TestConvert(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
+		{
+			name:    "fieldSelect",
+			args:    args{source: `user.name == "test"`},
+			want:    "`user`.`name` = \"test\"",
+			wantErr: false,
+		},
 		{
 			name:    "startsWith",
 			args:    args{source: `name.startsWith("a")`},
@@ -144,13 +151,13 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "map",
 			args:    args{source: `{"one": 1, "two": 2, "three": 3}["one"] == 1`},
-			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).one = 1",
+			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).`one` = 1",
 			wantErr: false,
 		},
 		{
 			name:    "map_var",
 			args:    args{source: `string_int_map["one"] == 1`},
-			want:    "`string_int_map`.one = 1",
+			want:    "`string_int_map`.`one` = 1",
 			wantErr: false,
 		},
 		{
