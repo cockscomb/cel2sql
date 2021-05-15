@@ -3,16 +3,23 @@ package cel2sql_test
 import (
 	"testing"
 
+	"cloud.google.com/go/bigquery"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cockscomb/cel2sql"
+	"github.com/cockscomb/cel2sql/bq"
+	"github.com/cockscomb/cel2sql/test"
 )
 
 func TestConvert(t *testing.T) {
 	env, err := cel.NewEnv(
+		cel.CustomTypeProvider(bq.NewTypeProvider(map[string]bigquery.Schema{
+			"trigrams": test.NewTrigramsTableMetadata().Schema,
+			"wikipedia": test.NewWikipediaTableMetadata().Schema,
+		})),
 		cel.Declarations(
 			decls.NewVar("name", decls.String),
 			decls.NewVar("age", decls.Int),
@@ -21,7 +28,8 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("string_list", decls.NewListType(decls.String)),
 			decls.NewVar("string_int_map", decls.NewMapType(decls.String, decls.Int)),
 			decls.NewVar("null_var", decls.Null),
-			decls.NewVar("user", decls.Dyn),
+			decls.NewVar("trigram", decls.NewObjectType("trigrams")),
+			decls.NewVar("page", decls.NewObjectType("wikipedia")),
 		),
 	)
 	require.NoError(t, err)
@@ -34,12 +42,6 @@ func TestConvert(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{
-			name:    "fieldSelect",
-			args:    args{source: `user.name == "test"`},
-			want:    "`user`.`name` = \"test\"",
-			wantErr: false,
-		},
 		{
 			name:    "startsWith",
 			args:    args{source: `name.startsWith("a")`},
@@ -188,6 +190,36 @@ func TestConvert(t *testing.T) {
 			name:    "concatList",
 			args:    args{source: `1 in [1] + [2, 3]`},
 			want:    "1 IN UNNEST([1] || [2, 3])",
+			wantErr: false,
+		},
+		{
+			name:    "fieldSelect",
+			args:    args{source: `page.title == "test"`},
+			want:    "`page`.`title` = \"test\"",
+			wantErr: false,
+		},
+		{
+			name:    "fieldSelect_startsWith",
+			args:    args{source: `page.title.startsWith("test")`},
+			want:    "STARTS_WITH(`page`.`title`, \"test\")",
+			wantErr: false,
+		},
+		{
+			name:    "fieldSelect_add",
+			args:    args{source: `trigram.cell[0].page_count + 1`},
+			want:    "`trigram`.`cell`[OFFSET(0)].`page_count` + 1",
+			wantErr: false,
+		},
+		{
+			name:    "fieldSelect_concatString",
+			args:    args{source: `trigram.cell[0].sample[0].title + "test"`},
+			want:    "`trigram`.`cell`[OFFSET(0)].`sample`[OFFSET(0)].`title` || \"test\"",
+			wantErr: false,
+		},
+		{
+			name:    "fieldSelect_in",
+			args:    args{source: `"test" in trigram.cell[0].value`},
+			want:    "\"test\" IN UNNEST(`trigram`.`cell`[OFFSET(0)].`value`)",
 			wantErr: false,
 		},
 	}
