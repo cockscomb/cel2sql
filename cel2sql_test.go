@@ -11,15 +11,17 @@ import (
 
 	"github.com/cockscomb/cel2sql"
 	"github.com/cockscomb/cel2sql/bq"
+	"github.com/cockscomb/cel2sql/sqltypes"
 	"github.com/cockscomb/cel2sql/test"
 )
 
 func TestConvert(t *testing.T) {
 	env, err := cel.NewEnv(
 		cel.CustomTypeProvider(bq.NewTypeProvider(map[string]bigquery.Schema{
-			"trigrams": test.NewTrigramsTableMetadata().Schema,
+			"trigrams":  test.NewTrigramsTableMetadata().Schema,
 			"wikipedia": test.NewWikipediaTableMetadata().Schema,
 		})),
+		sqltypes.SQLTypeDeclarations,
 		cel.Declarations(
 			decls.NewVar("name", decls.String),
 			decls.NewVar("age", decls.Int),
@@ -28,6 +30,10 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("string_list", decls.NewListType(decls.String)),
 			decls.NewVar("string_int_map", decls.NewMapType(decls.String, decls.Int)),
 			decls.NewVar("null_var", decls.Null),
+			decls.NewVar("birthday", sqltypes.Date),
+			decls.NewVar("fixed_time", sqltypes.Time),
+			decls.NewVar("scheduled_at", sqltypes.DateTime),
+			decls.NewVar("created_at", sqltypes.Timestamp),
 			decls.NewVar("trigram", decls.NewObjectType("trigrams")),
 			decls.NewVar("page", decls.NewObjectType("wikipedia")),
 		),
@@ -190,6 +196,30 @@ func TestConvert(t *testing.T) {
 			name:    "concatList",
 			args:    args{source: `1 in [1] + [2, 3]`},
 			want:    "1 IN UNNEST([1] || [2, 3])",
+			wantErr: false,
+		},
+		{
+			name:    "date",
+			args:    args{source: `birthday > date(2000, 1, 1) + 1`},
+			want:    "`birthday` > DATE(2000, 1, 1) + 1",
+			wantErr: false,
+		},
+		{
+			name:    "time",
+			args:    args{source: `fixed_time == time("18:00:00")`},
+			want:    "`fixed_time` = TIME(\"18:00:00\")",
+			wantErr: false,
+		},
+		{
+			name:    "datetime",
+			args:    args{source: `scheduled_at != datetime(date("2021-09-01"), fixed_time)`},
+			want:    "`scheduled_at` != DATETIME(DATE(\"2021-09-01\"), `fixed_time`)",
+			wantErr: false,
+		},
+		{
+			name:    "timestamp",
+			args:    args{source: `created_at <= timestamp(datetime("2021-09-01 18:00:00"), "Asia/Tokyo")`},
+			want:    "`created_at` <= TIMESTAMP(DATETIME(\"2021-09-01 18:00:00\"), \"Asia/Tokyo\")",
 			wantErr: false,
 		},
 		{

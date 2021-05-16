@@ -8,6 +8,8 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+
+	"github.com/cockscomb/cel2sql/sqltypes"
 )
 
 type typeProvider struct {
@@ -83,8 +85,16 @@ func (p *typeProvider) FindFieldType(messageType string, fieldName string) (*ref
 		typ = decls.Int
 	case bigquery.FloatFieldType:
 		typ = decls.Double
+	case bigquery.TimestampFieldType:
+		typ = sqltypes.Timestamp
 	case bigquery.RecordFieldType:
 		typ = decls.NewObjectType(strings.Join([]string{messageType, fieldName}, "."))
+	case bigquery.DateFieldType:
+		typ = sqltypes.Date
+	case bigquery.TimeFieldType:
+		typ = sqltypes.Time
+	case bigquery.DateTimeFieldType:
+		typ = sqltypes.DateTime
 	}
 	if field.Repeated {
 		typ = decls.NewListType(typ)

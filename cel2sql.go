@@ -173,6 +173,11 @@ var standardSQLFunctions = map[string]string{
 	"endsWith":   "ENDS_WITH",
 	"matches":    "REGEXP_CONTAINS",
 	"contains":   "INSTR",
+
+	"date":      "DATE",
+	"time":      "TIME",
+	"datetime":  "DATETIME",
+	"timestamp": "TIMESTAMP",
 }
 
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
