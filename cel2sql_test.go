@@ -252,6 +252,36 @@ func TestConvert(t *testing.T) {
 			want:    "\"test\" IN UNNEST(`trigram`.`cell`[OFFSET(0)].`value`)",
 			wantErr: false,
 		},
+		{
+			name:    "macro_all",
+			args:    args{source: `trigram.cell.all(cell, cell.page_count > 0)`},
+			want:    "SELECT COUNT(*) = 0 FROM UNNEST(`trigram`.`cell`) AS `cell` WHERE NOT (`cell`.`page_count` > 0)",
+			wantErr: false,
+		},
+		{
+			name:    "macro_exists",
+			args:    args{source: `trigram.cell.exists(cell, cell.page_count > 0)`},
+			want:    "SELECT COUNT(*) > 0 FROM UNNEST(`trigram`.`cell`) AS `cell` WHERE `cell`.`page_count` > 0",
+			wantErr: false,
+		},
+		{
+			name:    "macro_exists_one",
+			args:    args{source: `trigram.cell.exists_one(cell, cell.page_count > 0)`},
+			want:    "SELECT COUNT(*) = 1 FROM UNNEST(`trigram`.`cell`) AS `cell` WHERE `cell`.`page_count` > 0",
+			wantErr: false,
+		},
+		{
+			name:    "macro_filter",
+			args:    args{source: `trigram.cell.filter(cell, cell.page_count > 0)`},
+			want:    "SELECT ARRAY_AGG(`cell`) FROM UNNEST(`trigram`.`cell`) AS `cell` WHERE `cell`.`page_count` > 0",
+			wantErr: false,
+		},
+		{
+			name:    "macro_map",
+			args:    args{source: `trigram.cell.map(cell, cell.page_count + 1)`},
+			want:    "SELECT ARRAY_AGG(`cell`.`page_count` + 1) FROM UNNEST(`trigram`.`cell`) AS `cell`",
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
