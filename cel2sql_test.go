@@ -241,6 +241,12 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "interval",
+			args:    args{source: `interval(1, MONTH)`},
+			want:    "INTERVAL 1 MONTH",
+			wantErr: false,
+		},
+		{
 			name:    "fieldSelect",
 			args:    args{source: `page.title == "test"`},
 			want:    "`page`.`title` = \"test\"",

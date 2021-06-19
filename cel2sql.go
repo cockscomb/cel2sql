@@ -239,6 +239,17 @@ func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
+func (con *converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("INTERVAL ")
+	if err := con.visit(args[0]); err != nil {
+		return err
+	}
+	con.str.WriteString(" ")
+	datePart := args[1]
+	con.str.WriteString(datePart.GetIdentExpr().GetName())
+	return nil
+}
+
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
@@ -249,6 +260,8 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		return con.callContains(target, args)
 	case "duration":
 		return con.callDuration(target, args)
+	case "interval":
+		return con.callInterval(target, args)
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {

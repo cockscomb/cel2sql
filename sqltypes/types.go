@@ -12,9 +12,31 @@ var (
 	Time      = decls.NewAbstractType("TIME")
 	DateTime  = decls.NewAbstractType("DATETIME")
 	Timestamp = decls.NewAbstractType("TIMESTAMP")
+	Interval  = decls.NewAbstractType("INTERVAL")
+	DatePart  = decls.NewAbstractType("date_part")
 )
 
+func newConstantString(str string) *expr.Constant {
+	return &expr.Constant{ConstantKind: &expr.Constant_StringValue{StringValue: str}}
+}
+
 var SQLTypeDeclarations = cel.Declarations(
+	// constants
+	decls.NewConst("MICROSECOND", DatePart, newConstantString("MICROSECOND")),
+	decls.NewConst("MILLISECOND", DatePart, newConstantString("MILLISECOND")),
+	decls.NewConst("SECOND", DatePart, newConstantString("SECOND")),
+	decls.NewConst("MINUTE", DatePart, newConstantString("MINUTE")),
+	decls.NewConst("HOUR", DatePart, newConstantString("HOUR")),
+	decls.NewConst("DAY", DatePart, newConstantString("DAY")),
+	decls.NewConst("DAYOFWEEK", DatePart, newConstantString("DAYOFWEEK")),
+	decls.NewConst("WEEK", DatePart, newConstantString("WEEK")),
+	decls.NewConst("ISOWEEK", DatePart, newConstantString("ISOWEEK")),
+	decls.NewConst("MONTH", DatePart, newConstantString("MONTH")),
+	decls.NewConst("QUARTER", DatePart, newConstantString("QUARTER")),
+	decls.NewConst("YEAR", DatePart, newConstantString("YEAR")),
+	decls.NewConst("ISOYEAR", DatePart, newConstantString("ISOYEAR")),
+
+	// functions
 	decls.NewFunction("date",
 		decls.NewOverload("date_construct_year_month_day", []*expr.Type{decls.Int, decls.Int, decls.Int}, Date),
 		decls.NewOverload("date_construct_string", []*expr.Type{decls.String}, Date),
@@ -41,6 +63,9 @@ var SQLTypeDeclarations = cel.Declarations(
 		decls.NewOverload("timestamp_construct_date_timezone", []*expr.Type{Date, decls.String}, Timestamp),
 		decls.NewOverload("timestamp_construct_datetime", []*expr.Type{DateTime}, Timestamp),
 		decls.NewOverload("timestamp_construct_datetime_timezone", []*expr.Type{DateTime, decls.String}, Timestamp),
+	),
+	decls.NewFunction("interval",
+		decls.NewOverload("interval_construct", []*expr.Type{decls.Int, DatePart}, Interval),
 	),
 
 	// operators
