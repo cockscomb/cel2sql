@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
@@ -172,22 +173,92 @@ var standardSQLFunctions = map[string]string{
 	"startsWith": "STARTS_WITH",
 	"endsWith":   "ENDS_WITH",
 	"matches":    "REGEXP_CONTAINS",
-	"contains":   "INSTR",
+}
+
+func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("INSTR(")
+	if target != nil {
+		nested := isBinaryOrTernaryOperator(target)
+		err := con.visitMaybeNested(target, nested)
+		if err != nil {
+			return err
+		}
+		con.str.WriteString(", ")
+	}
+	for i, arg := range args {
+		err := con.visit(arg)
+		if err != nil {
+			return err
+		}
+		if i < len(args)-1 {
+			con.str.WriteString(", ")
+		}
+	}
+	con.str.WriteString(") != 0")
+	return nil
+}
+
+func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) error {
+	if len(args) != 1 {
+		return fmt.Errorf("arguments must be single")
+	}
+	arg := args[0]
+	var durationString = ""
+	switch arg.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		switch arg.GetConstExpr().ConstantKind.(type) {
+		case *exprpb.Constant_StringValue:
+			durationString = arg.GetConstExpr().GetStringValue()
+		default:
+			return fmt.Errorf("unsupported constant kind %t", arg.GetConstExpr().ConstantKind)
+		}
+	default:
+		return fmt.Errorf("unsupported kind %t", arg.ExprKind)
+	}
+	d, err := time.ParseDuration(durationString)
+	if err != nil {
+		return err
+	}
+	con.str.WriteString("INTERVAL ")
+	if d == d.Round(time.Hour) {
+		con.str.WriteString(strconv.FormatFloat(d.Hours(), 'f', 0, 64))
+		con.str.WriteString(" HOUR")
+	} else if d == d.Round(time.Minute) {
+		con.str.WriteString(strconv.FormatFloat(d.Minutes(), 'f', 0, 64))
+		con.str.WriteString(" MINUTE")
+	} else if d == d.Round(time.Second) {
+		con.str.WriteString(strconv.FormatFloat(d.Seconds(), 'f', 0, 64))
+		con.str.WriteString(" SECOND")
+	} else if d == d.Round(time.Millisecond) {
+		con.str.WriteString(strconv.FormatInt(d.Milliseconds(), 10))
+		con.str.WriteString(" MILLISECOND")
+	} else {
+		con.str.WriteString(strconv.FormatInt(d.Truncate(time.Microsecond).Microseconds(), 10))
+		con.str.WriteString(" MICROSECOND")
+	}
+	return nil
 }
 
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
+	target := c.GetTarget()
 	args := c.GetArgs()
+	switch fun {
+	case "contains":
+		return con.callContains(target, args)
+	case "duration":
+		return con.callDuration(target, args)
+	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
 		sqlFun = strings.ToUpper(fun)
 	}
 	con.str.WriteString(sqlFun)
 	con.str.WriteString("(")
-	if c.GetTarget() != nil {
-		nested := isBinaryOrTernaryOperator(c.GetTarget())
-		err := con.visitMaybeNested(c.GetTarget(), nested)
+	if target != nil {
+		nested := isBinaryOrTernaryOperator(target)
+		err := con.visitMaybeNested(target, nested)
 		if err != nil {
 			return err
 		}
@@ -203,9 +274,6 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		}
 	}
 	con.str.WriteString(")")
-	if fun == "contains" {
-		con.str.WriteString(" != 0")
-	}
 	return nil
 }
 

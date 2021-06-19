@@ -223,6 +223,24 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "duration_second",
+			args:    args{source: `duration("10s")`},
+			want:    "INTERVAL 10 SECOND",
+			wantErr: false,
+		},
+		{
+			name:    "duration_minute",
+			args:    args{source: `duration("1h1m")`},
+			want:    "INTERVAL 61 MINUTE",
+			wantErr: false,
+		},
+		{
+			name:    "duration_hour",
+			args:    args{source: `duration("60m")`},
+			want:    "INTERVAL 1 HOUR",
+			wantErr: false,
+		},
+		{
 			name:    "fieldSelect",
 			args:    args{source: `page.title == "test"`},
 			want:    "`page`.`title` = \"test\"",
