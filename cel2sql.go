@@ -5,9 +5,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/common/overloads"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -108,6 +110,12 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	// add parens if the current operator is lower precedence than the rhs expr operator,
 	// or the same precedence and the operator is left recursive.
 	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
+	lhsType := con.getType(lhs)
+	rhsType := con.getType(rhs)
+	if (isTimestampRelatedType(lhsType) && isDurationRelatedType(rhsType)) ||
+		(isTimestampRelatedType(rhsType) && isDurationRelatedType(lhsType)) {
+		return con.callTimestampOperation(fun, lhs, rhs)
+	}
 	if !rhsParen && isLeftRecursive(fun) {
 		rhsParen = isSamePrecedence(fun, rhs)
 	}
@@ -115,8 +123,6 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 		return err
 	}
 	var operator string
-	lhsType := con.getType(lhs)
-	rhsType := con.getType(rhs)
 	if fun == operators.Add && (lhsType.GetPrimitive() == exprpb.Type_STRING && rhsType.GetPrimitive() == exprpb.Type_STRING) {
 		operator = "||"
 	} else if fun == operators.Add && (rhsType.GetPrimitive() == exprpb.Type_BYTES && lhsType.GetPrimitive() == exprpb.Type_BYTES) {
@@ -149,6 +155,109 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	return nil
 }
 
+func isTimestampRelatedType(typ *exprpb.Type) bool {
+	abstractType := typ.GetAbstractType()
+	if abstractType != nil {
+		name := abstractType.GetName()
+		return name == "DATE" || name == "TIME" || name == "DATETIME"
+	} else {
+		return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
+	}
+}
+
+func isDateType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "DATE"
+}
+
+func isTimeType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "TIME"
+}
+
+func isDateTimeType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "DATETIME"
+}
+
+func isTimestampType(typ *exprpb.Type) bool {
+	return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
+}
+
+func isDurationRelatedType(typ *exprpb.Type) bool {
+	abstractType := typ.GetAbstractType()
+	if abstractType != nil {
+		name := abstractType.GetName()
+		return name == "INTERVAL"
+	} else {
+		return typ.GetWellKnown() == exprpb.Type_DURATION
+	}
+}
+
+func isDurationType(typ *exprpb.Type) bool {
+	return typ.GetWellKnown() == exprpb.Type_DURATION
+}
+
+func isIntervalType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "INTERVAL"
+}
+
+func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *exprpb.Expr) error {
+	lhsParen := isComplexOperatorWithRespectTo(fun, lhs)
+	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
+	lhsType := con.getType(lhs)
+	rhsType := con.getType(rhs)
+
+	var timestampType *exprpb.Type
+	var timestamp, duration *exprpb.Expr
+	var timestampParen, durationParen bool
+	if isTimestampRelatedType(lhsType) {
+		timestampType = lhsType
+		timestamp, duration = lhs, rhs
+		timestampParen, durationParen = lhsParen, rhsParen
+	} else if isTimestampRelatedType(rhsType) {
+		timestampType = rhsType
+		timestamp, duration = rhs, lhs
+		timestampParen, durationParen = rhsParen, lhsParen
+	} else {
+		panic("lhs or rhs must be timestamp related type")
+	}
+
+	var sqlFun string
+	switch fun {
+	case operators.Add:
+		if isTimeType(timestampType) {
+			sqlFun = "TIME_ADD"
+		} else if isDateType(timestampType) {
+			sqlFun = "DATE_ADD"
+		} else if isDateTimeType(timestampType) {
+			sqlFun = "DATETIME_ADD"
+		} else {
+			sqlFun = "TIMESTAMP_ADD"
+		}
+	case operators.Subtract:
+		if isTimeType(timestampType) {
+			sqlFun = "TIME_SUB"
+		} else if isDateType(timestampType) {
+			sqlFun = "DATE_SUB"
+		} else if isDateTimeType(timestampType) {
+			sqlFun = "DATETIME_SUB"
+		} else {
+			sqlFun = "TIMESTAMP_SUB"
+		}
+	default:
+		return fmt.Errorf("unsupported operation (%s)", fun)
+	}
+	con.str.WriteString(sqlFun)
+	con.str.WriteString("(")
+	if err := con.visitMaybeNested(timestamp, timestampParen); err != nil {
+		return err
+	}
+	con.str.WriteString(", ")
+	if err := con.visitMaybeNested(duration, durationParen); err != nil {
+		return err
+	}
+	con.str.WriteString(")")
+	return nil
+}
+
 func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
@@ -172,27 +281,154 @@ var standardSQLFunctions = map[string]string{
 	"startsWith": "STARTS_WITH",
 	"endsWith":   "ENDS_WITH",
 	"matches":    "REGEXP_CONTAINS",
-	"contains":   "INSTR",
+}
 
-	"date":      "DATE",
-	"time":      "TIME",
-	"datetime":  "DATETIME",
-	"timestamp": "TIMESTAMP",
+func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("INSTR(")
+	if target != nil {
+		nested := isBinaryOrTernaryOperator(target)
+		err := con.visitMaybeNested(target, nested)
+		if err != nil {
+			return err
+		}
+		con.str.WriteString(", ")
+	}
+	for i, arg := range args {
+		err := con.visit(arg)
+		if err != nil {
+			return err
+		}
+		if i < len(args)-1 {
+			con.str.WriteString(", ")
+		}
+	}
+	con.str.WriteString(") != 0")
+	return nil
+}
+
+func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) error {
+	if len(args) != 1 {
+		return fmt.Errorf("arguments must be single")
+	}
+	arg := args[0]
+	var durationString = ""
+	switch arg.ExprKind.(type) {
+	case *exprpb.Expr_ConstExpr:
+		switch arg.GetConstExpr().ConstantKind.(type) {
+		case *exprpb.Constant_StringValue:
+			durationString = arg.GetConstExpr().GetStringValue()
+		default:
+			return fmt.Errorf("unsupported constant kind %t", arg.GetConstExpr().ConstantKind)
+		}
+	default:
+		return fmt.Errorf("unsupported kind %t", arg.ExprKind)
+	}
+	d, err := time.ParseDuration(durationString)
+	if err != nil {
+		return err
+	}
+	con.str.WriteString("INTERVAL ")
+	if d == d.Round(time.Hour) {
+		con.str.WriteString(strconv.FormatFloat(d.Hours(), 'f', 0, 64))
+		con.str.WriteString(" HOUR")
+	} else if d == d.Round(time.Minute) {
+		con.str.WriteString(strconv.FormatFloat(d.Minutes(), 'f', 0, 64))
+		con.str.WriteString(" MINUTE")
+	} else if d == d.Round(time.Second) {
+		con.str.WriteString(strconv.FormatFloat(d.Seconds(), 'f', 0, 64))
+		con.str.WriteString(" SECOND")
+	} else if d == d.Round(time.Millisecond) {
+		con.str.WriteString(strconv.FormatInt(d.Milliseconds(), 10))
+		con.str.WriteString(" MILLISECOND")
+	} else {
+		con.str.WriteString(strconv.FormatInt(d.Truncate(time.Microsecond).Microseconds(), 10))
+		con.str.WriteString(" MICROSECOND")
+	}
+	return nil
+}
+
+func (con *converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("INTERVAL ")
+	if err := con.visit(args[0]); err != nil {
+		return err
+	}
+	con.str.WriteString(" ")
+	datePart := args[1]
+	con.str.WriteString(datePart.GetIdentExpr().GetName())
+	return nil
+}
+
+func (con *converter) callExtractFromTimestamp(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("EXTRACT(")
+	switch function {
+	case overloads.TimeGetFullYear:
+		con.str.WriteString("YEAR")
+	case overloads.TimeGetMonth:
+		con.str.WriteString("MONTH")
+	case overloads.TimeGetDate:
+		con.str.WriteString("DAY")
+	case overloads.TimeGetHours:
+		con.str.WriteString("HOUR")
+	case overloads.TimeGetMinutes:
+		con.str.WriteString("MINUTE")
+	case overloads.TimeGetSeconds:
+		con.str.WriteString("SECOND")
+	case overloads.TimeGetMilliseconds:
+		con.str.WriteString("MILLISECOND")
+	case overloads.TimeGetDayOfYear:
+		con.str.WriteString("DAYOFYEAR")
+	case overloads.TimeGetDayOfMonth:
+		con.str.WriteString("DAY")
+	case overloads.TimeGetDayOfWeek:
+		con.str.WriteString("DAYOFWEEK")
+	}
+	con.str.WriteString(" FROM ")
+	if err := con.visit(target); err != nil {
+		return err
+	}
+	if isTimestampType(con.getType(target)) && len(args) == 1 {
+		con.str.WriteString(" AT ")
+		if err := con.visit(args[0]); err != nil {
+			return err
+		}
+	}
+	con.str.WriteString(")")
+	return nil
 }
 
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
+	target := c.GetTarget()
 	args := c.GetArgs()
+	switch fun {
+	case "contains":
+		return con.callContains(target, args)
+	case "duration":
+		return con.callDuration(target, args)
+	case "interval":
+		return con.callInterval(target, args)
+	case overloads.TimeGetFullYear,
+		overloads.TimeGetMonth,
+		overloads.TimeGetDate,
+		overloads.TimeGetHours,
+		overloads.TimeGetMinutes,
+		overloads.TimeGetSeconds,
+		overloads.TimeGetMilliseconds,
+		overloads.TimeGetDayOfYear,
+		overloads.TimeGetDayOfMonth,
+		overloads.TimeGetDayOfWeek:
+		return con.callExtractFromTimestamp(fun, target, args)
+	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
-		return fmt.Errorf("unsupported function: %s", fun)
+		sqlFun = strings.ToUpper(fun)
 	}
 	con.str.WriteString(sqlFun)
 	con.str.WriteString("(")
-	if c.GetTarget() != nil {
-		nested := isBinaryOrTernaryOperator(c.GetTarget())
-		err := con.visitMaybeNested(c.GetTarget(), nested)
+	if target != nil {
+		nested := isBinaryOrTernaryOperator(target)
+		err := con.visitMaybeNested(target, nested)
 		if err != nil {
 			return err
 		}
@@ -208,9 +444,6 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		}
 	}
 	con.str.WriteString(")")
-	if fun == "contains" {
-		con.str.WriteString(" != 0")
-	}
 	return nil
 }
 
