@@ -33,7 +33,7 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("birthday", sqltypes.Date),
 			decls.NewVar("fixed_time", sqltypes.Time),
 			decls.NewVar("scheduled_at", sqltypes.DateTime),
-			decls.NewVar("created_at", sqltypes.Timestamp),
+			decls.NewVar("created_at", decls.Timestamp),
 			decls.NewVar("trigram", decls.NewObjectType("trigrams")),
 			decls.NewVar("page", decls.NewObjectType("wikipedia")),
 		),

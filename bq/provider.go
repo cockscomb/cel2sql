@@ -86,7 +86,7 @@ func (p *typeProvider) FindFieldType(messageType string, fieldName string) (*ref
 	case bigquery.FloatFieldType:
 		typ = decls.Double
 	case bigquery.TimestampFieldType:
-		typ = sqltypes.Timestamp
+		typ = decls.Timestamp
 	case bigquery.RecordFieldType:
 		typ = decls.NewObjectType(strings.Join([]string{messageType, fieldName}, "."))
 	case bigquery.DateFieldType:
