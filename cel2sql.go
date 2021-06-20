@@ -278,9 +278,9 @@ func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 }
 
 var standardSQLFunctions = map[string]string{
-	"startsWith": "STARTS_WITH",
-	"endsWith":   "ENDS_WITH",
-	"matches":    "REGEXP_CONTAINS",
+	overloads.StartsWith: "STARTS_WITH",
+	overloads.EndsWith:   "ENDS_WITH",
+	overloads.Matches:    "REGEXP_CONTAINS",
 }
 
 func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
@@ -402,9 +402,9 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	target := c.GetTarget()
 	args := c.GetArgs()
 	switch fun {
-	case "contains":
+	case overloads.Contains:
 		return con.callContains(target, args)
-	case "duration":
+	case overloads.TypeConvertDuration:
 		return con.callDuration(target, args)
 	case "interval":
 		return con.callInterval(target, args)
