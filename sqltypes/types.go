@@ -8,11 +8,11 @@ import (
 )
 
 var (
-	Date      = decls.NewAbstractType("DATE")
-	Time      = decls.NewAbstractType("TIME")
-	DateTime  = decls.NewAbstractType("DATETIME")
-	Interval  = decls.NewAbstractType("INTERVAL")
-	DatePart  = decls.NewAbstractType("date_part")
+	Date     = decls.NewAbstractType("DATE")
+	Time     = decls.NewAbstractType("TIME")
+	DateTime = decls.NewAbstractType("DATETIME")
+	Interval = decls.NewAbstractType("INTERVAL")
+	DatePart = decls.NewAbstractType("date_part")
 )
 
 func newConstantString(str string) *expr.Constant {
@@ -64,6 +64,21 @@ var SQLTypeDeclarations = cel.Declarations(
 	),
 	decls.NewFunction("interval",
 		decls.NewOverload("interval_construct", []*expr.Type{decls.Int, DatePart}, Interval),
+	),
+	decls.NewFunction("current_date",
+		decls.NewOverload("current_date", []*expr.Type{}, Date),
+		decls.NewOverload("current_date_timezone", []*expr.Type{decls.String}, Date),
+	),
+	decls.NewFunction("current_time",
+		decls.NewOverload("current_time", []*expr.Type{}, Time),
+		decls.NewOverload("current_time_timezone", []*expr.Type{decls.String}, Time),
+	),
+	decls.NewFunction("current_datetime",
+		decls.NewOverload("current_datetime", []*expr.Type{}, DateTime),
+		decls.NewOverload("current_datetime_timezone", []*expr.Type{decls.String}, DateTime),
+	),
+	decls.NewFunction("current_timestamp",
+		decls.NewOverload("current_timestamp", []*expr.Type{}, decls.Timestamp),
 	),
 
 	// operators

@@ -254,8 +254,8 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name:    "date_sub",
-			args:    args{source: `date("2021-09-01") - interval(1, DAY)`},
-			want:    "DATE_SUB(DATE(\"2021-09-01\"), INTERVAL 1 DAY)",
+			args:    args{source: `current_date() - interval(1, DAY)`},
+			want:    "DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)",
 			wantErr: false,
 		},
 		{
@@ -278,8 +278,8 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name:    "datetime_sub",
-			args:    args{source: `datetime("2021-09-01 18:00:00") - interval(1, MINUTE)`},
-			want:    "DATETIME_SUB(DATETIME(\"2021-09-01 18:00:00\"), INTERVAL 1 MINUTE)",
+			args:    args{source: `current_datetime("Asia/Tokyo") - interval(1, MINUTE)`},
+			want:    "DATETIME_SUB(CURRENT_DATETIME(\"Asia/Tokyo\"), INTERVAL 1 MINUTE)",
 			wantErr: false,
 		},
 		{
@@ -290,8 +290,8 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name:    "timestamp_sub",
-			args:    args{source: `timestamp("2021-09-01T18:00:00Z") - interval(1, HOUR)`},
-			want:    "TIMESTAMP_SUB(TIMESTAMP(\"2021-09-01T18:00:00Z\"), INTERVAL 1 HOUR)",
+			args:    args{source: `created_at - interval(1, HOUR)`},
+			want:    "TIMESTAMP_SUB(`created_at`, INTERVAL 1 HOUR)",
 			wantErr: false,
 		},
 		{
