@@ -199,6 +199,12 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "modulo",
+			args:    args{source: `5 % 3 == 2`},
+			want:    "MOD(5, 3) = 2",
+			wantErr: false,
+		},
+		{
 			name:    "date",
 			args:    args{source: `birthday > date(2000, 1, 1) + 1`},
 			want:    "`birthday` > DATE(2000, 1, 1) + 1",
@@ -315,7 +321,13 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "datetime_getMonth",
 			args:    args{source: `scheduled_at.getMonth()`},
-			want:    "EXTRACT(MONTH FROM `scheduled_at`)",
+			want:    "EXTRACT(MONTH FROM `scheduled_at`) - 1",
+			wantErr: false,
+		},
+		{
+			name:    "datetime_getDayOfMonth",
+			args:    args{source: `scheduled_at.getDayOfMonth()`},
+			want:    "EXTRACT(DAY FROM `scheduled_at`) - 1",
 			wantErr: false,
 		},
 		{
@@ -352,6 +364,60 @@ func TestConvert(t *testing.T) {
 			name:    "fieldSelect_in",
 			args:    args{source: `"test" in trigram.cell[0].value`},
 			want:    "\"test\" IN UNNEST(`trigram`.`cell`[OFFSET(0)].`value`)",
+			wantErr: false,
+		},
+		{
+			name:    "cast_bool",
+			args:    args{source: `bool(0) == false`},
+			want:    "CAST(0 AS BOOL) IS FALSE",
+			wantErr: false,
+		},
+		{
+			name:    "cast_bytes",
+			args:    args{source: `bytes("test")`},
+			want:    "CAST(\"test\" AS BYTES)",
+			wantErr: false,
+		},
+		{
+			name:    "cast_int",
+			args:    args{source: `int(true) == 1`},
+			want:    "CAST(TRUE AS INT64) = 1",
+			wantErr: false,
+		},
+		{
+			name:    "cast_string",
+			args:    args{source: `string(true) == "true"`},
+			want:    "CAST(TRUE AS STRING) = \"true\"",
+			wantErr: false,
+		},
+		{
+			name:    "cast_string_from_timestamp",
+			args:    args{source: `string(created_at)`},
+			want:    "CAST(`created_at` AS STRING)",
+			wantErr: false,
+		},
+		{
+			name:    "cast_int_epoch",
+			args:    args{source: `int(created_at)`},
+			want:    "UNIX_SECONDS(`created_at`)",
+			wantErr: false,
+		},
+		{
+			name:    "size_string",
+			args:    args{source: `size("test")`},
+			want:    "CHAR_LENGTH(\"test\")",
+			wantErr: false,
+		},
+		{
+			name:    "size_bytes",
+			args:    args{source: `size(bytes("test"))`},
+			want:    "BYTE_LENGTH(CAST(\"test\" AS BYTES))",
+			wantErr: false,
+		},
+		{
+			name:    "size_list",
+			args:    args{source: `size(string_list)`},
+			want:    "ARRAY_LENGTH(`string_list`)",
 			wantErr: false,
 		},
 	}

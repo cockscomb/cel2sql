@@ -80,7 +80,6 @@ func (con *converter) visitCall(expr *exprpb.Expr) error {
 		operators.LessEquals,
 		operators.LogicalAnd,
 		operators.LogicalOr,
-		operators.Modulo,
 		operators.Multiply,
 		operators.NotEquals,
 		operators.OldIn,
@@ -278,9 +277,10 @@ func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 }
 
 var standardSQLFunctions = map[string]string{
-	"startsWith": "STARTS_WITH",
-	"endsWith":   "ENDS_WITH",
-	"matches":    "REGEXP_CONTAINS",
+	operators.Modulo:     "MOD",
+	overloads.StartsWith: "STARTS_WITH",
+	overloads.EndsWith:   "ENDS_WITH",
+	overloads.Matches:    "REGEXP_CONTAINS",
 }
 
 func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
@@ -393,6 +393,42 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 		}
 	}
 	con.str.WriteString(")")
+	if function == overloads.TimeGetMonth || function == overloads.TimeGetDayOfYear || function == overloads.TimeGetDayOfMonth || function == overloads.TimeGetDayOfWeek {
+		con.str.WriteString(" - 1")
+	}
+	return nil
+}
+
+func (con *converter) callCasting(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+	arg := args[0]
+	if function == overloads.TypeConvertInt && isTimestampType(con.getType(arg)) {
+		con.str.WriteString("UNIX_SECONDS(")
+		if err := con.visit(arg); err != nil {
+			return err
+		}
+		con.str.WriteString(")")
+		return nil
+	}
+	con.str.WriteString("CAST(")
+	if err := con.visit(arg); err != nil {
+		return err
+	}
+	con.str.WriteString(" AS ")
+	switch function {
+	case overloads.TypeConvertBool:
+		con.str.WriteString("BOOL")
+	case overloads.TypeConvertBytes:
+		con.str.WriteString("BYTES")
+	case overloads.TypeConvertDouble:
+		con.str.WriteString("FLOAT64")
+	case overloads.TypeConvertInt:
+		con.str.WriteString("INT64")
+	case overloads.TypeConvertString:
+		con.str.WriteString("STRING")
+	case overloads.TypeConvertUint:
+		con.str.WriteString("INT64")
+	}
+	con.str.WriteString(")")
 	return nil
 }
 
@@ -402,9 +438,9 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	target := c.GetTarget()
 	args := c.GetArgs()
 	switch fun {
-	case "contains":
+	case overloads.Contains:
 		return con.callContains(target, args)
-	case "duration":
+	case overloads.TypeConvertDuration:
 		return con.callDuration(target, args)
 	case "interval":
 		return con.callInterval(target, args)
@@ -419,10 +455,30 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		overloads.TimeGetDayOfMonth,
 		overloads.TimeGetDayOfWeek:
 		return con.callExtractFromTimestamp(fun, target, args)
+	case overloads.TypeConvertBool,
+		overloads.TypeConvertBytes,
+		overloads.TypeConvertDouble,
+		overloads.TypeConvertInt,
+		overloads.TypeConvertString,
+		overloads.TypeConvertUint:
+		return con.callCasting(fun, target, args)
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
-		sqlFun = strings.ToUpper(fun)
+		if fun == overloads.Size {
+			argType := con.getType(args[0])
+			if argType.GetPrimitive() == exprpb.Type_STRING {
+				sqlFun = "CHAR_LENGTH"
+			} else if argType.GetPrimitive() == exprpb.Type_BYTES {
+				sqlFun = "BYTE_LENGTH"
+			} else if isListType(argType) {
+				sqlFun = "ARRAY_LENGTH"
+			} else {
+				return fmt.Errorf("unsupported type: %v", argType)
+			}
+		} else {
+			sqlFun = strings.ToUpper(fun)
+		}
 	}
 	con.str.WriteString(sqlFun)
 	con.str.WriteString("(")

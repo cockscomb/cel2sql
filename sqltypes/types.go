@@ -121,6 +121,13 @@ var SQLTypeDeclarations = cel.Declarations(
 		decls.NewInstanceOverload("date_to_day_of_week", []*expr.Type{Date}, decls.Int),
 		decls.NewInstanceOverload("datetime_to_day_of_week", []*expr.Type{DateTime}, decls.Int),
 	),
+	decls.NewFunction(overloads.TypeConvertBool,
+		decls.NewOverload("int_to_bool", []*expr.Type{decls.Int}, decls.Bool),
+		decls.NewOverload("uint_to_bool", []*expr.Type{decls.Uint}, decls.Bool),
+	),
+	decls.NewFunction(overloads.TypeConvertInt,
+		decls.NewOverload("bool_to_int", []*expr.Type{decls.Bool}, decls.Int),
+	),
 
 	// operators
 	decls.NewFunction(operators.Less,
