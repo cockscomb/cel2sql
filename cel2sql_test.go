@@ -295,6 +295,36 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "timestamp_getSeconds",
+			args:    args{source: `created_at.getSeconds()`},
+			want:    "EXTRACT(SECOND FROM `created_at`)",
+			wantErr: false,
+		},
+		{
+			name:    "\"timestamp_getHours_withTimezone",
+			args:    args{source: `created_at.getHours("Asia/Tokyo")`},
+			want:    "EXTRACT(HOUR FROM `created_at` AT \"Asia/Tokyo\")",
+			wantErr: false,
+		},
+		{
+			name:    "date_getFullYear",
+			args:    args{source: `birthday.getFullYear()`},
+			want:    "EXTRACT(YEAR FROM `birthday`)",
+			wantErr: false,
+		},
+		{
+			name:    "datetime_getMonth",
+			args:    args{source: `scheduled_at.getMonth()`},
+			want:    "EXTRACT(MONTH FROM `scheduled_at`)",
+			wantErr: false,
+		},
+		{
+			name:    "time_getMinutes",
+			args:    args{source: `fixed_time.getMinutes()`},
+			want:    "EXTRACT(MINUTE FROM `fixed_time`)",
+			wantErr: false,
+		},
+		{
 			name:    "fieldSelect",
 			args:    args{source: `page.title == "test"`},
 			want:    "`page`.`title` = \"test\"",

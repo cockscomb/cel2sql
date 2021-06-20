@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/common/overloads"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -357,6 +358,44 @@ func (con *converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
+func (con *converter) callExtractFromTimestamp(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+	con.str.WriteString("EXTRACT(")
+	switch function {
+	case overloads.TimeGetFullYear:
+		con.str.WriteString("YEAR")
+	case overloads.TimeGetMonth:
+		con.str.WriteString("MONTH")
+	case overloads.TimeGetDate:
+		con.str.WriteString("DAY")
+	case overloads.TimeGetHours:
+		con.str.WriteString("HOUR")
+	case overloads.TimeGetMinutes:
+		con.str.WriteString("MINUTE")
+	case overloads.TimeGetSeconds:
+		con.str.WriteString("SECOND")
+	case overloads.TimeGetMilliseconds:
+		con.str.WriteString("MILLISECOND")
+	case overloads.TimeGetDayOfYear:
+		con.str.WriteString("DAYOFYEAR")
+	case overloads.TimeGetDayOfMonth:
+		con.str.WriteString("DAY")
+	case overloads.TimeGetDayOfWeek:
+		con.str.WriteString("DAYOFWEEK")
+	}
+	con.str.WriteString(" FROM ")
+	if err := con.visit(target); err != nil {
+		return err
+	}
+	if isTimestampType(con.getType(target)) && len(args) == 1 {
+		con.str.WriteString(" AT ")
+		if err := con.visit(args[0]); err != nil {
+			return err
+		}
+	}
+	con.str.WriteString(")")
+	return nil
+}
+
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
@@ -369,6 +408,17 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		return con.callDuration(target, args)
 	case "interval":
 		return con.callInterval(target, args)
+	case overloads.TimeGetFullYear,
+		overloads.TimeGetMonth,
+		overloads.TimeGetDate,
+		overloads.TimeGetHours,
+		overloads.TimeGetMinutes,
+		overloads.TimeGetSeconds,
+		overloads.TimeGetMilliseconds,
+		overloads.TimeGetDayOfYear,
+		overloads.TimeGetDayOfMonth,
+		overloads.TimeGetDayOfWeek:
+		return con.callExtractFromTimestamp(fun, target, args)
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {

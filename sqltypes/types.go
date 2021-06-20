@@ -4,6 +4,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/common/overloads"
 	expr "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
 
@@ -79,6 +80,46 @@ var SQLTypeDeclarations = cel.Declarations(
 	),
 	decls.NewFunction("current_timestamp",
 		decls.NewOverload("current_timestamp", []*expr.Type{}, decls.Timestamp),
+	),
+	decls.NewFunction(overloads.TimeGetFullYear,
+		decls.NewInstanceOverload("date_to_year", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_year", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetMonth,
+		decls.NewInstanceOverload("date_to_month", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_month", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetDate,
+		decls.NewInstanceOverload("date_to_date", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_date", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetHours,
+		decls.NewInstanceOverload("time_to_hours", []*expr.Type{Time}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_hours", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetMinutes,
+		decls.NewInstanceOverload("time_to_minutes", []*expr.Type{Time}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_minutes", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetSeconds,
+		decls.NewInstanceOverload("time_to_seconds", []*expr.Type{Time}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_seconds", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetMilliseconds,
+		decls.NewInstanceOverload("time_to_milliseconds", []*expr.Type{Time}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_milliseconds", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetDayOfYear,
+		decls.NewInstanceOverload("date_to_day_of_year", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_day_of_year", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetDayOfMonth,
+		decls.NewInstanceOverload("date_to_day_of_month", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_day_of_month", []*expr.Type{DateTime}, decls.Int),
+	),
+	decls.NewFunction(overloads.TimeGetDayOfWeek,
+		decls.NewInstanceOverload("date_to_day_of_week", []*expr.Type{Date}, decls.Int),
+		decls.NewInstanceOverload("datetime_to_day_of_week", []*expr.Type{DateTime}, decls.Int),
 	),
 
 	// operators
