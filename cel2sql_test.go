@@ -360,6 +360,42 @@ func TestConvert(t *testing.T) {
 			want:    "\"test\" IN UNNEST(`trigram`.`cell`[OFFSET(0)].`value`)",
 			wantErr: false,
 		},
+		{
+			name:    "cast_bool",
+			args:    args{source: `bool(0) == false`},
+			want:    "CAST(0 AS BOOL) IS FALSE",
+			wantErr: false,
+		},
+		{
+			name:    "cast_bytes",
+			args:    args{source: `bytes("test")`},
+			want:    "CAST(\"test\" AS BYTES)",
+			wantErr: false,
+		},
+		{
+			name:    "cast_int",
+			args:    args{source: `int(true) == 1`},
+			want:    "CAST(TRUE AS INT64) = 1",
+			wantErr: false,
+		},
+		{
+			name:    "cast_string",
+			args:    args{source: `string(true) == "true"`},
+			want:    "CAST(TRUE AS STRING) = \"true\"",
+			wantErr: false,
+		},
+		{
+			name:    "cast_string_from_timestamp",
+			args:    args{source: `string(created_at)`},
+			want:    "CAST(`created_at` AS STRING)",
+			wantErr: false,
+		},
+		{
+			name:    "cast_int_epoch",
+			args:    args{source: `int(created_at)`},
+			want:    "UNIX_SECONDS(`created_at`)",
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

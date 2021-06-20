@@ -396,6 +396,39 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 	return nil
 }
 
+func (con *converter) callCasting(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+	arg := args[0]
+	if function == overloads.TypeConvertInt && isTimestampType(con.getType(arg)) {
+		con.str.WriteString("UNIX_SECONDS(")
+		if err := con.visit(arg); err != nil {
+			return err
+		}
+		con.str.WriteString(")")
+		return nil
+	}
+	con.str.WriteString("CAST(")
+	if err := con.visit(arg); err != nil {
+		return err
+	}
+	con.str.WriteString(" AS ")
+	switch function {
+	case overloads.TypeConvertBool:
+		con.str.WriteString("BOOL")
+	case overloads.TypeConvertBytes:
+		con.str.WriteString("BYTES")
+	case overloads.TypeConvertDouble:
+		con.str.WriteString("FLOAT64")
+	case overloads.TypeConvertInt:
+		con.str.WriteString("INT64")
+	case overloads.TypeConvertString:
+		con.str.WriteString("STRING")
+	case overloads.TypeConvertUint:
+		con.str.WriteString("INT64")
+	}
+	con.str.WriteString(")")
+	return nil
+}
+
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
@@ -419,6 +452,13 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		overloads.TimeGetDayOfMonth,
 		overloads.TimeGetDayOfWeek:
 		return con.callExtractFromTimestamp(fun, target, args)
+	case overloads.TypeConvertBool,
+		overloads.TypeConvertBytes,
+		overloads.TypeConvertDouble,
+		overloads.TypeConvertInt,
+		overloads.TypeConvertString,
+		overloads.TypeConvertUint:
+		return con.callCasting(fun, target, args)
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
