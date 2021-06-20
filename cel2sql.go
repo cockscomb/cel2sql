@@ -393,6 +393,9 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 		}
 	}
 	con.str.WriteString(")")
+	if function == overloads.TimeGetMonth || function == overloads.TimeGetDayOfYear || function == overloads.TimeGetDayOfMonth || function == overloads.TimeGetDayOfWeek {
+		con.str.WriteString(" - 1")
+	}
 	return nil
 }
 

@@ -321,7 +321,13 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "datetime_getMonth",
 			args:    args{source: `scheduled_at.getMonth()`},
-			want:    "EXTRACT(MONTH FROM `scheduled_at`)",
+			want:    "EXTRACT(MONTH FROM `scheduled_at`) - 1",
+			wantErr: false,
+		},
+		{
+			name:    "datetime_getDayOfMonth",
+			args:    args{source: `scheduled_at.getDayOfMonth()`},
+			want:    "EXTRACT(DAY FROM `scheduled_at`) - 1",
 			wantErr: false,
 		},
 		{
