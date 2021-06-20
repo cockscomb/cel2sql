@@ -218,8 +218,8 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name:    "timestamp",
-			args:    args{source: `created_at <= timestamp(datetime("2021-09-01 18:00:00"), "Asia/Tokyo")`},
-			want:    "`created_at` <= TIMESTAMP(DATETIME(\"2021-09-01 18:00:00\"), \"Asia/Tokyo\")",
+			args:    args{source: `created_at - duration("60m") <= timestamp(datetime("2021-09-01 18:00:00"), "Asia/Tokyo")`},
+			want:    "TIMESTAMP_SUB(`created_at`, INTERVAL 1 HOUR) <= TIMESTAMP(DATETIME(\"2021-09-01 18:00:00\"), \"Asia/Tokyo\")",
 			wantErr: false,
 		},
 		{
@@ -244,6 +244,54 @@ func TestConvert(t *testing.T) {
 			name:    "interval",
 			args:    args{source: `interval(1, MONTH)`},
 			want:    "INTERVAL 1 MONTH",
+			wantErr: false,
+		},
+		{
+			name:    "date_add",
+			args:    args{source: `date("2021-09-01") + interval(1, DAY)`},
+			want:    "DATE_ADD(DATE(\"2021-09-01\"), INTERVAL 1 DAY)",
+			wantErr: false,
+		},
+		{
+			name:    "date_sub",
+			args:    args{source: `date("2021-09-01") - interval(1, DAY)`},
+			want:    "DATE_SUB(DATE(\"2021-09-01\"), INTERVAL 1 DAY)",
+			wantErr: false,
+		},
+		{
+			name:    "time_add",
+			args:    args{source: `time("09:00:00") + interval(1, MINUTE)`},
+			want:    "TIME_ADD(TIME(\"09:00:00\"), INTERVAL 1 MINUTE)",
+			wantErr: false,
+		},
+		{
+			name:    "time_sub",
+			args:    args{source: `time("09:00:00") - interval(1, MINUTE)`},
+			want:    "TIME_SUB(TIME(\"09:00:00\"), INTERVAL 1 MINUTE)",
+			wantErr: false,
+		},
+		{
+			name:    "datetime_add",
+			args:    args{source: `datetime("2021-09-01 18:00:00") + interval(1, MINUTE)`},
+			want:    "DATETIME_ADD(DATETIME(\"2021-09-01 18:00:00\"), INTERVAL 1 MINUTE)",
+			wantErr: false,
+		},
+		{
+			name:    "datetime_sub",
+			args:    args{source: `datetime("2021-09-01 18:00:00") - interval(1, MINUTE)`},
+			want:    "DATETIME_SUB(DATETIME(\"2021-09-01 18:00:00\"), INTERVAL 1 MINUTE)",
+			wantErr: false,
+		},
+		{
+			name:    "timestamp_add",
+			args:    args{source: `duration("1h") + timestamp("2021-09-01T18:00:00Z")`},
+			want:    "TIMESTAMP_ADD(TIMESTAMP(\"2021-09-01T18:00:00Z\"), INTERVAL 1 HOUR)",
+			wantErr: false,
+		},
+		{
+			name:    "timestamp_sub",
+			args:    args{source: `timestamp("2021-09-01T18:00:00Z") - interval(1, HOUR)`},
+			want:    "TIMESTAMP_SUB(TIMESTAMP(\"2021-09-01T18:00:00Z\"), INTERVAL 1 HOUR)",
 			wantErr: false,
 		},
 		{

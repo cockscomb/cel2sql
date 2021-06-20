@@ -109,6 +109,12 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	// add parens if the current operator is lower precedence than the rhs expr operator,
 	// or the same precedence and the operator is left recursive.
 	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
+	lhsType := con.getType(lhs)
+	rhsType := con.getType(rhs)
+	if (isTimestampRelatedType(lhsType) && isDurationRelatedType(rhsType)) ||
+		(isTimestampRelatedType(rhsType) && isDurationRelatedType(lhsType)) {
+		return con.callTimestampOperation(fun, lhs, rhs)
+	}
 	if !rhsParen && isLeftRecursive(fun) {
 		rhsParen = isSamePrecedence(fun, rhs)
 	}
@@ -116,8 +122,6 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 		return err
 	}
 	var operator string
-	lhsType := con.getType(lhs)
-	rhsType := con.getType(rhs)
 	if fun == operators.Add && (lhsType.GetPrimitive() == exprpb.Type_STRING && rhsType.GetPrimitive() == exprpb.Type_STRING) {
 		operator = "||"
 	} else if fun == operators.Add && (rhsType.GetPrimitive() == exprpb.Type_BYTES && lhsType.GetPrimitive() == exprpb.Type_BYTES) {
@@ -147,6 +151,109 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	if fun == operators.In && isListType(rhsType) {
 		con.str.WriteString(")")
 	}
+	return nil
+}
+
+func isTimestampRelatedType(typ *exprpb.Type) bool {
+	abstractType := typ.GetAbstractType()
+	if abstractType != nil {
+		name := abstractType.GetName()
+		return name == "DATE" || name == "TIME" || name == "DATETIME"
+	} else {
+		return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
+	}
+}
+
+func isDateType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "DATE"
+}
+
+func isTimeType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "TIME"
+}
+
+func isDateTimeType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "DATETIME"
+}
+
+func isTimestampType(typ *exprpb.Type) bool {
+	return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
+}
+
+func isDurationRelatedType(typ *exprpb.Type) bool {
+	abstractType := typ.GetAbstractType()
+	if abstractType != nil {
+		name := abstractType.GetName()
+		return name == "INTERVAL"
+	} else {
+		return typ.GetWellKnown() == exprpb.Type_DURATION
+	}
+}
+
+func isDurationType(typ *exprpb.Type) bool {
+	return typ.GetWellKnown() == exprpb.Type_DURATION
+}
+
+func isIntervalType(typ *exprpb.Type) bool {
+	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "INTERVAL"
+}
+
+func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *exprpb.Expr) error {
+	lhsParen := isComplexOperatorWithRespectTo(fun, lhs)
+	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
+	lhsType := con.getType(lhs)
+	rhsType := con.getType(rhs)
+
+	var timestampType *exprpb.Type
+	var timestamp, duration *exprpb.Expr
+	var timestampParen, durationParen bool
+	if isTimestampRelatedType(lhsType) {
+		timestampType = lhsType
+		timestamp, duration = lhs, rhs
+		timestampParen, durationParen = lhsParen, rhsParen
+	} else if isTimestampRelatedType(rhsType) {
+		timestampType = rhsType
+		timestamp, duration = rhs, lhs
+		timestampParen, durationParen = rhsParen, lhsParen
+	} else {
+		panic("lhs or rhs must be timestamp related type")
+	}
+
+	var sqlFun string
+	switch fun {
+	case operators.Add:
+		if isTimeType(timestampType) {
+			sqlFun = "TIME_ADD"
+		} else if isDateType(timestampType) {
+			sqlFun = "DATE_ADD"
+		} else if isDateTimeType(timestampType) {
+			sqlFun = "DATETIME_ADD"
+		} else {
+			sqlFun = "TIMESTAMP_ADD"
+		}
+	case operators.Subtract:
+		if isTimeType(timestampType) {
+			sqlFun = "TIME_SUB"
+		} else if isDateType(timestampType) {
+			sqlFun = "DATE_SUB"
+		} else if isDateTimeType(timestampType) {
+			sqlFun = "DATETIME_SUB"
+		} else {
+			sqlFun = "TIMESTAMP_SUB"
+		}
+	default:
+		return fmt.Errorf("unsupported operation (%s)", fun)
+	}
+	con.str.WriteString(sqlFun)
+	con.str.WriteString("(")
+	if err := con.visitMaybeNested(timestamp, timestampParen); err != nil {
+		return err
+	}
+	con.str.WriteString(", ")
+	if err := con.visitMaybeNested(duration, durationParen); err != nil {
+		return err
+	}
+	con.str.WriteString(")")
 	return nil
 }
 
