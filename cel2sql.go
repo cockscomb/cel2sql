@@ -465,7 +465,20 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
-		sqlFun = strings.ToUpper(fun)
+		if fun == overloads.Size {
+			argType := con.getType(args[0])
+			if argType.GetPrimitive() == exprpb.Type_STRING {
+				sqlFun = "CHAR_LENGTH"
+			} else if argType.GetPrimitive() == exprpb.Type_BYTES {
+				sqlFun = "BYTE_LENGTH"
+			} else if isListType(argType) {
+				sqlFun = "ARRAY_LENGTH"
+			} else {
+				return fmt.Errorf("unsupported type: %v", argType)
+			}
+		} else {
+			sqlFun = strings.ToUpper(fun)
+		}
 	}
 	con.str.WriteString(sqlFun)
 	con.str.WriteString("(")

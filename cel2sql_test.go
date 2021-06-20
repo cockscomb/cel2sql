@@ -402,6 +402,24 @@ func TestConvert(t *testing.T) {
 			want:    "UNIX_SECONDS(`created_at`)",
 			wantErr: false,
 		},
+		{
+			name:    "size_string",
+			args:    args{source: `size("test")`},
+			want:    "CHAR_LENGTH(\"test\")",
+			wantErr: false,
+		},
+		{
+			name:    "size_bytes",
+			args:    args{source: `size(bytes("test"))`},
+			want:    "BYTE_LENGTH(CAST(\"test\" AS BYTES))",
+			wantErr: false,
+		},
+		{
+			name:    "size_list",
+			args:    args{source: `size(string_list)`},
+			want:    "ARRAY_LENGTH(`string_list`)",
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
