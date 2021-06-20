@@ -80,7 +80,6 @@ func (con *converter) visitCall(expr *exprpb.Expr) error {
 		operators.LessEquals,
 		operators.LogicalAnd,
 		operators.LogicalOr,
-		operators.Modulo,
 		operators.Multiply,
 		operators.NotEquals,
 		operators.OldIn,
@@ -278,6 +277,7 @@ func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 }
 
 var standardSQLFunctions = map[string]string{
+	operators.Modulo:     "MOD",
 	overloads.StartsWith: "STARTS_WITH",
 	overloads.EndsWith:   "ENDS_WITH",
 	overloads.Matches:    "REGEXP_CONTAINS",

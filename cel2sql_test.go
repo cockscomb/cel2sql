@@ -199,6 +199,12 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "modulo",
+			args:    args{source: `5 % 3 == 2`},
+			want:    "MOD(5, 3) = 2",
+			wantErr: false,
+		},
+		{
 			name:    "date",
 			args:    args{source: `birthday > date(2000, 1, 1) + 1`},
 			want:    "`birthday` > DATE(2000, 1, 1) + 1",
