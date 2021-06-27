@@ -405,13 +405,13 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "size_string",
 			args:    args{source: `size("test")`},
-			want:    "CHAR_LENGTH(\"test\")",
+			want:    "LENGTH(\"test\")",
 			wantErr: false,
 		},
 		{
 			name:    "size_bytes",
 			args:    args{source: `size(bytes("test"))`},
-			want:    "BYTE_LENGTH(CAST(\"test\" AS BYTES))",
+			want:    "LENGTH(CAST(\"test\" AS BYTES))",
 			wantErr: false,
 		},
 		{

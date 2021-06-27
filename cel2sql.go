@@ -463,9 +463,9 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 			argType := con.getType(args[0])
 			switch {
 			case argType.GetPrimitive() == exprpb.Type_STRING:
-				sqlFun = "CHAR_LENGTH"
+				sqlFun = "LENGTH"
 			case argType.GetPrimitive() == exprpb.Type_BYTES:
-				sqlFun = "BYTE_LENGTH"
+				sqlFun = "LENGTH"
 			case isListType(argType):
 				sqlFun = "ARRAY_LENGTH"
 			default:
