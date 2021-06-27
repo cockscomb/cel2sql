@@ -159,9 +159,8 @@ func isTimestampRelatedType(typ *exprpb.Type) bool {
 	if abstractType != nil {
 		name := abstractType.GetName()
 		return name == "DATE" || name == "TIME" || name == "DATETIME"
-	} else {
-		return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
 	}
+	return typ.GetWellKnown() == exprpb.Type_TIMESTAMP
 }
 
 func isDateType(typ *exprpb.Type) bool {
@@ -185,17 +184,8 @@ func isDurationRelatedType(typ *exprpb.Type) bool {
 	if abstractType != nil {
 		name := abstractType.GetName()
 		return name == "INTERVAL"
-	} else {
-		return typ.GetWellKnown() == exprpb.Type_DURATION
 	}
-}
-
-func isDurationType(typ *exprpb.Type) bool {
 	return typ.GetWellKnown() == exprpb.Type_DURATION
-}
-
-func isIntervalType(typ *exprpb.Type) bool {
-	return typ.GetAbstractType() != nil && typ.GetAbstractType().GetName() == "INTERVAL"
 }
 
 func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *exprpb.Expr) error {
@@ -207,38 +197,41 @@ func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *
 	var timestampType *exprpb.Type
 	var timestamp, duration *exprpb.Expr
 	var timestampParen, durationParen bool
-	if isTimestampRelatedType(lhsType) {
+	switch {
+	case isTimestampRelatedType(lhsType):
 		timestampType = lhsType
 		timestamp, duration = lhs, rhs
 		timestampParen, durationParen = lhsParen, rhsParen
-	} else if isTimestampRelatedType(rhsType) {
+	case isTimestampRelatedType(rhsType):
 		timestampType = rhsType
 		timestamp, duration = rhs, lhs
 		timestampParen, durationParen = rhsParen, lhsParen
-	} else {
+	default:
 		panic("lhs or rhs must be timestamp related type")
 	}
 
 	var sqlFun string
 	switch fun {
 	case operators.Add:
-		if isTimeType(timestampType) {
+		switch {
+		case isTimeType(timestampType):
 			sqlFun = "TIME_ADD"
-		} else if isDateType(timestampType) {
+		case isDateType(timestampType):
 			sqlFun = "DATE_ADD"
-		} else if isDateTimeType(timestampType) {
+		case isDateTimeType(timestampType):
 			sqlFun = "DATETIME_ADD"
-		} else {
+		default:
 			sqlFun = "TIMESTAMP_ADD"
 		}
 	case operators.Subtract:
-		if isTimeType(timestampType) {
+		switch {
+		case isTimeType(timestampType):
 			sqlFun = "TIME_SUB"
-		} else if isDateType(timestampType) {
+		case isDateType(timestampType):
 			sqlFun = "DATE_SUB"
-		} else if isDateTimeType(timestampType) {
+		case isDateTimeType(timestampType):
 			sqlFun = "DATETIME_SUB"
-		} else {
+		default:
 			sqlFun = "TIMESTAMP_SUB"
 		}
 	default:
@@ -311,7 +304,7 @@ func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) err
 		return fmt.Errorf("arguments must be single")
 	}
 	arg := args[0]
-	var durationString = ""
+	var durationString string
 	switch arg.ExprKind.(type) {
 	case *exprpb.Expr_ConstExpr:
 		switch arg.GetConstExpr().ConstantKind.(type) {
@@ -328,19 +321,20 @@ func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) err
 		return err
 	}
 	con.str.WriteString("INTERVAL ")
-	if d == d.Round(time.Hour) {
+	switch d {
+	case d.Round(time.Hour):
 		con.str.WriteString(strconv.FormatFloat(d.Hours(), 'f', 0, 64))
 		con.str.WriteString(" HOUR")
-	} else if d == d.Round(time.Minute) {
+	case d.Round(time.Minute):
 		con.str.WriteString(strconv.FormatFloat(d.Minutes(), 'f', 0, 64))
 		con.str.WriteString(" MINUTE")
-	} else if d == d.Round(time.Second) {
+	case d.Round(time.Second):
 		con.str.WriteString(strconv.FormatFloat(d.Seconds(), 'f', 0, 64))
 		con.str.WriteString(" SECOND")
-	} else if d == d.Round(time.Millisecond) {
+	case d.Round(time.Millisecond):
 		con.str.WriteString(strconv.FormatInt(d.Milliseconds(), 10))
 		con.str.WriteString(" MILLISECOND")
-	} else {
+	default:
 		con.str.WriteString(strconv.FormatInt(d.Truncate(time.Microsecond).Microseconds(), 10))
 		con.str.WriteString(" MICROSECOND")
 	}
@@ -467,13 +461,14 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	if !ok {
 		if fun == overloads.Size {
 			argType := con.getType(args[0])
-			if argType.GetPrimitive() == exprpb.Type_STRING {
+			switch {
+			case argType.GetPrimitive() == exprpb.Type_STRING:
 				sqlFun = "CHAR_LENGTH"
-			} else if argType.GetPrimitive() == exprpb.Type_BYTES {
+			case argType.GetPrimitive() == exprpb.Type_BYTES:
 				sqlFun = "BYTE_LENGTH"
-			} else if isListType(argType) {
+			case isListType(argType):
 				sqlFun = "ARRAY_LENGTH"
-			} else {
+			default:
 				return fmt.Errorf("unsupported type: %v", argType)
 			}
 		} else {
@@ -506,9 +501,8 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 func (con *converter) visitCallIndex(expr *exprpb.Expr) error {
 	if isMapType(con.getType(expr.GetCallExpr().GetArgs()[0])) {
 		return con.visitCallMapIndex(expr)
-	} else {
-		return con.visitCallListIndex(expr)
 	}
+	return con.visitCallListIndex(expr)
 }
 
 func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
@@ -724,19 +718,13 @@ func (con *converter) getType(node *exprpb.Expr) *exprpb.Type {
 }
 
 func isMapType(typ *exprpb.Type) bool {
-	switch typ.TypeKind.(type) {
-	case *exprpb.Type_MapType_:
-		return true
-	}
-	return false
+	_, ok := typ.TypeKind.(*exprpb.Type_MapType_)
+	return ok
 }
 
 func isListType(typ *exprpb.Type) bool {
-	switch typ.TypeKind.(type) {
-	case *exprpb.Type_ListType_:
-		return true
-	}
-	return false
+	_, ok := typ.TypeKind.(*exprpb.Type_ListType_)
+	return ok
 }
 
 // isLeftRecursive indicates whether the parser resolves the call in a left-recursive manner as
@@ -800,36 +788,30 @@ func isBinaryOrTernaryOperator(expr *exprpb.Expr) bool {
 }
 
 func isNullLiteral(node *exprpb.Expr) bool {
-	switch node.ExprKind.(type) {
-	case *exprpb.Expr_ConstExpr:
-		switch node.GetConstExpr().ConstantKind.(type) {
-		case *exprpb.Constant_NullValue:
-			return true
-		}
+	_, isConst := node.ExprKind.(*exprpb.Expr_ConstExpr)
+	if !isConst {
+		return false
 	}
-	return false
+	_, isNull := node.GetConstExpr().ConstantKind.(*exprpb.Constant_NullValue)
+	return isNull
 }
 
 func isBoolLiteral(node *exprpb.Expr) bool {
-	switch node.ExprKind.(type) {
-	case *exprpb.Expr_ConstExpr:
-		switch node.GetConstExpr().ConstantKind.(type) {
-		case *exprpb.Constant_BoolValue:
-			return true
-		}
+	_, isConst := node.ExprKind.(*exprpb.Expr_ConstExpr)
+	if !isConst {
+		return false
 	}
-	return false
+	_, isBool := node.GetConstExpr().ConstantKind.(*exprpb.Constant_BoolValue)
+	return isBool
 }
 
 func isStringLiteral(node *exprpb.Expr) bool {
-	switch node.ExprKind.(type) {
-	case *exprpb.Expr_ConstExpr:
-		switch node.GetConstExpr().ConstantKind.(type) {
-		case *exprpb.Constant_StringValue:
-			return true
-		}
+	_, isConst := node.ExprKind.(*exprpb.Expr_ConstExpr)
+	if !isConst {
+		return false
 	}
-	return false
+	_, isString := node.GetConstExpr().ConstantKind.(*exprpb.Constant_StringValue)
+	return isString
 }
 
 // bytesToOctets converts byte sequences to a string using a three digit octal encoded value
@@ -837,7 +819,7 @@ func isStringLiteral(node *exprpb.Expr) bool {
 func bytesToOctets(byteVal []byte) string {
 	var b strings.Builder
 	for _, c := range byteVal {
-		fmt.Fprintf(&b, "\\%03o", c)
+		_, _ = fmt.Fprintf(&b, "\\%03o", c)
 	}
 	return b.String()
 }

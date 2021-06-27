@@ -35,7 +35,7 @@ func (p *typeProvider) findSchema(typeName string) (bigquery.Schema, bool) {
 		return nil, false
 	}
 	for _, tn := range typeNames[1:] {
-		var s *bigquery.Schema = nil
+		var s *bigquery.Schema
 		for _, fieldSchema := range schema {
 			if fieldSchema.Name == tn {
 				s = &fieldSchema.Schema
@@ -63,7 +63,7 @@ func (p *typeProvider) FindFieldType(messageType string, fieldName string) (*ref
 	if !found {
 		return nil, false
 	}
-	var field *bigquery.FieldSchema = nil
+	var field *bigquery.FieldSchema
 	for _, fieldSchema := range schema {
 		if fieldSchema.Name == fieldName {
 			field = fieldSchema
