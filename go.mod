@@ -3,8 +3,8 @@ module github.com/cockscomb/cel2sql
 go 1.16
 
 require (
-	cloud.google.com/go/bigquery v1.18.0
+	cloud.google.com/go/bigquery v1.19.0
 	github.com/google/cel-go v0.7.3
 	github.com/stretchr/testify v1.7.0
-	google.golang.org/genproto v0.0.0-20210506142907-4a47615972c2
+	google.golang.org/genproto v0.0.0-20210624174822-c5cf32407d0a
 )
