@@ -274,6 +274,7 @@ var standardSQLFunctions = map[string]string{
 	overloads.StartsWith: "STARTS_WITH",
 	overloads.EndsWith:   "ENDS_WITH",
 	overloads.Matches:    "REGEXP_CONTAINS",
+	"lowerAscii":         "LOWER",
 }
 
 func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
