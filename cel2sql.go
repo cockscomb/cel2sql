@@ -567,7 +567,20 @@ func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
 func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	// TODO: introduce a macro expansion map between the top-level comprehension id and the
 	// function call that the macro replaces.
-	return fmt.Errorf("unimplemented : %v", expr)
+
+	// Comprehenions like:
+	//   array.exists(x, expr(x))
+	// are transformed into
+	// 	 EXISTS (SELECT * FROM UNNEST(array) AS x WHERE expr_sql(x)))
+	// where expr_sql() is the SQL equivalent of the expr() CEL expression
+	// TODO: Test more extensively and add more checks.
+	e := expr.GetComprehensionExpr()
+	con.str.WriteString("EXISTS (SELECT * FROM UNNEST(")
+	con.visitSelect(e.GetIterRange())
+	con.str.WriteString(fmt.Sprintf(") AS %s WHERE ", e.GetIterVar()))
+	con.visitCall(e.GetLoopStep().GetCallExpr().GetArgs()[1])
+	con.str.WriteString(")")
+	return nil
 }
 
 func (con *converter) visitConst(expr *exprpb.Expr) error {
