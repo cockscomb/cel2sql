@@ -483,7 +483,9 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		if err != nil {
 			return err
 		}
-		con.str.WriteString(", ")
+		if len(args) > 0 {
+			con.str.WriteString(", ")
+		}
 	}
 	for i, arg := range args {
 		err := con.visit(arg)
