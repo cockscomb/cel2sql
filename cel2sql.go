@@ -578,7 +578,7 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	con.str.WriteString("EXISTS (SELECT * FROM UNNEST(")
 	con.visit(e.GetIterRange())
 	con.str.WriteString(fmt.Sprintf(") AS %s WHERE ", e.GetIterVar()))
-	con.visitCall(e.GetLoopStep().GetCallExpr().GetArgs()[1])
+	con.visit(e.GetLoopStep().GetCallExpr().GetArgs()[1])
 	con.str.WriteString(")")
 	return nil
 }
