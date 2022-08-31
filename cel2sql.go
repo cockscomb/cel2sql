@@ -16,13 +16,17 @@ import (
 // Implementations based on `google/cel-go`'s unparser
 // https://github.com/google/cel-go/blob/master/parser/unparser.go
 
-func Convert(ast *cel.Ast) (string, error) {
+func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
 	checkedExpr, err := cel.AstToCheckedExpr(ast)
 	if err != nil {
 		return "", err
 	}
 	un := &converter{
-		typeMap: checkedExpr.TypeMap,
+		typeMap:      checkedExpr.TypeMap,
+		valueTracker: &embedTracker{},
+	}
+	for _, opt := range opts {
+		opt(un)
 	}
 	if err := un.visit(checkedExpr.Expr); err != nil {
 		return "", err
@@ -30,9 +34,32 @@ func Convert(ast *cel.Ast) (string, error) {
 	return un.str.String(), nil
 }
 
+type ConvertOption func(*converter)
+
+func WithValueTracker(tracker ValueTracker) ConvertOption {
+	return func(con *converter) {
+		con.valueTracker = tracker
+	}
+}
+
+type ValueTracker interface {
+	AddValue(val interface{}) string
+}
+
+type embedTracker struct{}
+
+func (t *embedTracker) AddValue(val interface{}) string {
+	if v, ok := val.(string); ok {
+		return v
+	}
+	// TODO: support list of consts
+	panic("unsupported type")
+}
+
 type converter struct {
-	str     strings.Builder
-	typeMap map[int64]*exprpb.Type
+	str          strings.Builder
+	typeMap      map[int64]*exprpb.Type
+	valueTracker ValueTracker
 }
 
 func (con *converter) visit(expr *exprpb.Expr) error {
@@ -583,36 +610,41 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitConst(expr *exprpb.Expr) error {
+func getConstValue(expr *exprpb.Expr) (string, error) {
 	c := expr.GetConstExpr()
 	switch c.ConstantKind.(type) {
 	case *exprpb.Constant_BoolValue:
 		if c.GetBoolValue() {
-			con.str.WriteString("TRUE")
-		} else {
-			con.str.WriteString("FALSE")
+			return "TRUE", nil
 		}
+		return "FALSE", nil
 	case *exprpb.Constant_BytesValue:
 		b := c.GetBytesValue()
-		con.str.WriteString(`b"`)
-		con.str.WriteString(bytesToOctets(b))
-		con.str.WriteString(`"`)
+		return `b"` + bytesToOctets(b) + `"`, nil
 	case *exprpb.Constant_DoubleValue:
 		d := strconv.FormatFloat(c.GetDoubleValue(), 'g', -1, 64)
-		con.str.WriteString(d)
+		return d, nil
 	case *exprpb.Constant_Int64Value:
 		i := strconv.FormatInt(c.GetInt64Value(), 10)
-		con.str.WriteString(i)
+		return i, nil
 	case *exprpb.Constant_NullValue:
-		con.str.WriteString("NULL")
+		return "NULL", nil
 	case *exprpb.Constant_StringValue:
-		con.str.WriteString(strconv.Quote(c.GetStringValue()))
+		return strconv.Quote(c.GetStringValue()), nil
 	case *exprpb.Constant_Uint64Value:
 		ui := strconv.FormatUint(c.GetUint64Value(), 10)
-		con.str.WriteString(ui)
+		return ui, nil
 	default:
-		return fmt.Errorf("unimplemented : %v", expr)
+		return "", fmt.Errorf("unimplemented : %v", expr)
 	}
+}
+
+func (con *converter) visitConst(expr *exprpb.Expr) error {
+	value, err := getConstValue(expr)
+	if err != nil {
+		return err
+	}
+	con.str.WriteString(con.valueTracker.AddValue(value))
 	return nil
 }
 
@@ -624,6 +656,7 @@ func (con *converter) visitIdent(expr *exprpb.Expr) error {
 }
 
 func (con *converter) visitList(expr *exprpb.Expr) error {
+	// TODO: implement list support
 	l := expr.GetListExpr()
 	elems := l.GetElements()
 	con.str.WriteString("[")

@@ -1,6 +1,7 @@
 package cel2sql_test
 
 import (
+	"strings"
 	"testing"
 
 	"cloud.google.com/go/bigquery"
@@ -421,12 +422,29 @@ func TestConvert(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
+	tracker := bq.NewBigQueryNamedTracker()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ast, issues := env.Compile(tt.args.source)
 			require.Empty(t, issues)
 
 			got, err := cel2sql.Convert(ast)
+			if !tt.wantErr && assert.NoError(t, err) {
+				assert.Equal(t, tt.want, got)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+
+		t.Run(tt.name, func(t *testing.T) {
+			ast, issues := env.Compile(tt.args.source)
+			require.Empty(t, issues)
+
+			got, err := cel2sql.Convert(ast, cel2sql.WithValueTracker(tracker))
+			for _, v := range tracker.Values {
+				got = strings.ReplaceAll(got, "@"+v.Name, v.Value.(string))
+			}
 			if !tt.wantErr && assert.NoError(t, err) {
 				assert.Equal(t, tt.want, got)
 			} else {
