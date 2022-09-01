@@ -443,7 +443,7 @@ func TestConvert(t *testing.T) {
 
 			got, err := cel2sql.Convert(ast, cel2sql.WithValueTracker(tracker))
 			for _, v := range tracker.Values {
-				got = strings.ReplaceAll(got, "@"+v.Name, v.Value.(string))
+				got = strings.ReplaceAll(got, "@"+v.Name, cel2sql.ValueToString(v.Value))
 			}
 			if !tt.wantErr && assert.NoError(t, err) {
 				assert.Equal(t, tt.want, got)

@@ -49,11 +49,31 @@ type ValueTracker interface {
 type embedTracker struct{}
 
 func (t *embedTracker) AddValue(val interface{}) string {
-	if v, ok := val.(string); ok {
-		return v
+	return ValueToString(val)
+}
+
+func ValueToString(val interface{}) string {
+	switch v := val.(type) {
+	case string:
+		return strconv.Quote(v)
+	case bool:
+		if v {
+			return "TRUE"
+		}
+		return "FALSE"
+	case []byte:
+		return `b"` + bytesToOctets(v) + `"`
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case nil:
+		return "NULL"
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	default:
+		panic("unsupported type")
 	}
-	// TODO: support list of consts
-	panic("unsupported type")
 }
 
 type converter struct {
@@ -610,30 +630,23 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	return nil
 }
 
-func getConstValue(expr *exprpb.Expr) (string, error) {
+func getConstValue(expr *exprpb.Expr) (interface{}, error) {
 	c := expr.GetConstExpr()
 	switch c.ConstantKind.(type) {
 	case *exprpb.Constant_BoolValue:
-		if c.GetBoolValue() {
-			return "TRUE", nil
-		}
-		return "FALSE", nil
+		return c.GetBoolValue(), nil
 	case *exprpb.Constant_BytesValue:
-		b := c.GetBytesValue()
-		return `b"` + bytesToOctets(b) + `"`, nil
+		return c.GetBytesValue(), nil
 	case *exprpb.Constant_DoubleValue:
-		d := strconv.FormatFloat(c.GetDoubleValue(), 'g', -1, 64)
-		return d, nil
+		return c.GetDoubleValue(), nil
 	case *exprpb.Constant_Int64Value:
-		i := strconv.FormatInt(c.GetInt64Value(), 10)
-		return i, nil
+		return c.GetInt64Value(), nil
 	case *exprpb.Constant_NullValue:
-		return "NULL", nil
+		return nil, nil
 	case *exprpb.Constant_StringValue:
-		return strconv.Quote(c.GetStringValue()), nil
+		return c.GetStringValue(), nil
 	case *exprpb.Constant_Uint64Value:
-		ui := strconv.FormatUint(c.GetUint64Value(), 10)
-		return ui, nil
+		return c.GetUint64Value(), nil
 	default:
 		return "", fmt.Errorf("unimplemented : %v", expr)
 	}
