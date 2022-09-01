@@ -421,6 +421,12 @@ func TestConvert(t *testing.T) {
 			want:    "ARRAY_LENGTH(`string_list`)",
 			wantErr: false,
 		},
+		{
+			name:    "inplace_array_exists",
+			args:    args{source: `["foo", "bar"].exists(x, x == "foo")`},
+			want:    "EXISTS (SELECT * FROM UNNEST([\"foo\", \"bar\"]) AS x WHERE `x` = \"foo\")",
+			wantErr: false,
+		},
 	}
 
 	tracker := bq.NewBigQueryNamedTracker()
