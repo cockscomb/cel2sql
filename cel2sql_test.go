@@ -449,7 +449,7 @@ func TestConvert(t *testing.T) {
 			ast, issues := env.Compile(tt.args.source)
 			require.Empty(t, issues)
 
-			got, err := cel2sql.Convert(ast)
+			got, err := cel2sql.Convert(ast, cel2sql.WithExtension(&filters.Extension{}))
 			if !tt.wantErr && assert.NoError(t, err) {
 				assert.Equal(t, tt.want, got)
 			} else {
@@ -457,7 +457,7 @@ func TestConvert(t *testing.T) {
 			}
 
 			t.Run("WithValueTracker", func(t *testing.T) {
-				got, err := cel2sql.Convert(ast, cel2sql.WithValueTracker(tracker))
+				got, err := cel2sql.Convert(ast, cel2sql.WithValueTracker(tracker), cel2sql.WithExtension(&filters.Extension{}))
 				for _, v := range tracker.Values {
 					got = strings.ReplaceAll(got, "@"+v.Name, cel2sql.ValueToString(v.Value))
 				}

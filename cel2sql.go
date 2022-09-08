@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cockscomb/cel2sql/filters"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/overloads"
@@ -22,25 +21,36 @@ func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	un := &converter{
+	un := &Converter{
 		typeMap:      checkedExpr.TypeMap,
 		valueTracker: &embedTracker{},
 	}
 	for _, opt := range opts {
 		opt(un)
 	}
-	if err := un.visit(checkedExpr.Expr); err != nil {
+	if err := un.Visit(checkedExpr.Expr); err != nil {
 		return "", err
 	}
 	return un.str.String(), nil
 }
 
-type ConvertOption func(*converter)
+type ConvertOption func(*Converter)
 
 func WithValueTracker(tracker ValueTracker) ConvertOption {
-	return func(con *converter) {
+	return func(con *Converter) {
 		con.valueTracker = tracker
 	}
+}
+
+func WithExtension(ext Extension) ConvertOption {
+	return func(con *Converter) {
+		con.extensions = append(con.extensions, ext)
+	}
+}
+
+type Extension interface {
+	ImplementsFunction(string) bool
+	CallFunction(con *Converter, function string, target *exprpb.Expr, args []*exprpb.Expr) error
 }
 
 type ValueTracker interface {
@@ -77,13 +87,18 @@ func ValueToString(val interface{}) string {
 	}
 }
 
-type converter struct {
+type Converter struct {
 	str          strings.Builder
 	typeMap      map[int64]*exprpb.Type
 	valueTracker ValueTracker
+	extensions   []Extension
 }
 
-func (con *converter) visit(expr *exprpb.Expr) error {
+func (con *Converter) WriteString(s string) (int, error) {
+	return con.str.WriteString(s)
+}
+
+func (con *Converter) Visit(expr *exprpb.Expr) error {
 	switch expr.ExprKind.(type) {
 	case *exprpb.Expr_CallExpr:
 		return con.visitCall(expr)
@@ -104,7 +119,7 @@ func (con *converter) visit(expr *exprpb.Expr) error {
 	return fmt.Errorf("unsupported expr: %v", expr)
 }
 
-func (con *converter) visitCall(expr *exprpb.Expr) error {
+func (con *Converter) visitCall(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	switch fun {
@@ -146,7 +161,7 @@ var standardSQLBinaryOperators = map[string]string{
 	operators.In:         "IN",
 }
 
-func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
+func (con *Converter) visitCallBinary(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
@@ -157,8 +172,8 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	// add parens if the current operator is lower precedence than the rhs expr operator,
 	// or the same precedence and the operator is left recursive.
 	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
-	lhsType := con.getType(lhs)
-	rhsType := con.getType(rhs)
+	lhsType := con.GetType(lhs)
+	rhsType := con.GetType(rhs)
 	if (isTimestampRelatedType(lhsType) && isDurationRelatedType(rhsType)) ||
 		(isTimestampRelatedType(rhsType) && isDurationRelatedType(lhsType)) {
 		return con.callTimestampOperation(fun, lhs, rhs)
@@ -174,7 +189,7 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 		operator = "||"
 	} else if fun == operators.Add && (rhsType.GetPrimitive() == exprpb.Type_BYTES && lhsType.GetPrimitive() == exprpb.Type_BYTES) {
 		operator = "||"
-	} else if fun == operators.Add && (isListType(lhsType) && isListType(rhsType)) {
+	} else if fun == operators.Add && (IsListType(lhsType) && IsListType(rhsType)) {
 		operator = "||"
 	} else if fun == operators.Equals && (isNullLiteral(rhs) || isBoolLiteral(rhs)) {
 		operator = "IS"
@@ -190,13 +205,13 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	con.str.WriteString(" ")
 	con.str.WriteString(operator)
 	con.str.WriteString(" ")
-	if fun == operators.In && isListType(rhsType) {
+	if fun == operators.In && IsListType(rhsType) {
 		con.str.WriteString("UNNEST(")
 	}
 	if err := con.visitMaybeNested(rhs, rhsParen); err != nil {
 		return err
 	}
-	if fun == operators.In && isListType(rhsType) {
+	if fun == operators.In && IsListType(rhsType) {
 		con.str.WriteString(")")
 	}
 	return nil
@@ -236,11 +251,11 @@ func isDurationRelatedType(typ *exprpb.Type) bool {
 	return typ.GetWellKnown() == exprpb.Type_DURATION
 }
 
-func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *exprpb.Expr) error {
+func (con *Converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *exprpb.Expr) error {
 	lhsParen := isComplexOperatorWithRespectTo(fun, lhs)
 	rhsParen := isComplexOperatorWithRespectTo(fun, rhs)
-	lhsType := con.getType(lhs)
-	rhsType := con.getType(rhs)
+	lhsType := con.GetType(lhs)
+	rhsType := con.GetType(rhs)
 
 	var timestampType *exprpb.Type
 	var timestamp, duration *exprpb.Expr
@@ -298,19 +313,19 @@ func (con *converter) callTimestampOperation(fun string, lhs *exprpb.Expr, rhs *
 	return nil
 }
 
-func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
+func (con *Converter) visitCallConditional(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	con.str.WriteString("IF(")
-	if err := con.visit(args[0]); err != nil {
+	if err := con.Visit(args[0]); err != nil {
 		return err
 	}
 	con.str.WriteString(", ")
-	if err := con.visit(args[1]); err != nil {
+	if err := con.Visit(args[1]); err != nil {
 		return err
 	}
 	con.str.WriteString(", ")
-	if err := con.visit(args[2]); err != nil {
+	if err := con.Visit(args[2]); err != nil {
 		return nil
 	}
 	con.str.WriteString(")")
@@ -325,7 +340,7 @@ var standardSQLFunctions = map[string]string{
 	"lowerAscii":         "LOWER",
 }
 
-func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
+func (con *Converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) error {
 	con.str.WriteString("INSTR(")
 	if target != nil {
 		nested := isBinaryOrTernaryOperator(target)
@@ -336,7 +351,7 @@ func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) err
 		con.str.WriteString(", ")
 	}
 	for i, arg := range args {
-		err := con.visit(arg)
+		err := con.Visit(arg)
 		if err != nil {
 			return err
 		}
@@ -348,7 +363,7 @@ func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
-func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) error {
+func (con *Converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) error {
 	if len(args) != 1 {
 		return fmt.Errorf("arguments must be single")
 	}
@@ -390,9 +405,9 @@ func (con *converter) callDuration(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
-func (con *converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) error {
+func (con *Converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) error {
 	con.str.WriteString("INTERVAL ")
-	if err := con.visit(args[0]); err != nil {
+	if err := con.Visit(args[0]); err != nil {
 		return err
 	}
 	con.str.WriteString(" ")
@@ -401,7 +416,7 @@ func (con *converter) callInterval(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
-func (con *converter) callExtractFromTimestamp(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+func (con *Converter) callExtractFromTimestamp(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
 	con.str.WriteString("EXTRACT(")
 	switch function {
 	case overloads.TimeGetFullYear:
@@ -426,12 +441,12 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 		con.str.WriteString("DAYOFWEEK")
 	}
 	con.str.WriteString(" FROM ")
-	if err := con.visit(target); err != nil {
+	if err := con.Visit(target); err != nil {
 		return err
 	}
-	if isTimestampType(con.getType(target)) && len(args) == 1 {
+	if isTimestampType(con.GetType(target)) && len(args) == 1 {
 		con.str.WriteString(" AT ")
-		if err := con.visit(args[0]); err != nil {
+		if err := con.Visit(args[0]); err != nil {
 			return err
 		}
 	}
@@ -442,18 +457,18 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 	return nil
 }
 
-func (con *converter) callCasting(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+func (con *Converter) callCasting(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
 	arg := args[0]
-	if function == overloads.TypeConvertInt && isTimestampType(con.getType(arg)) {
+	if function == overloads.TypeConvertInt && isTimestampType(con.GetType(arg)) {
 		con.str.WriteString("UNIX_SECONDS(")
-		if err := con.visit(arg); err != nil {
+		if err := con.Visit(arg); err != nil {
 			return err
 		}
 		con.str.WriteString(")")
 		return nil
 	}
 	con.str.WriteString("CAST(")
-	if err := con.visit(arg); err != nil {
+	if err := con.Visit(arg); err != nil {
 		return err
 	}
 	con.str.WriteString(" AS ")
@@ -475,50 +490,7 @@ func (con *converter) callCasting(function string, target *exprpb.Expr, args []*
 	return nil
 }
 
-// TODO:
-func (con *converter) callFilter(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
-	tgtType := con.getType(target)
-	argType := con.getType(args[0])
-	switch function {
-	case filters.ExistsEquals, filters.ExistsEqualsCI:
-		switch {
-		case tgtType.GetPrimitive() == exprpb.Type_STRING:
-			if function == filters.ExistsEqualsCI {
-				con.str.WriteString("COLLATE(")
-			}
-			if err := con.visit(target); err != nil {
-				return err
-			}
-			if function == filters.ExistsEqualsCI {
-				con.str.WriteString(", \"und:ci\")")
-			}
-			switch {
-			case argType.GetPrimitive() == exprpb.Type_STRING:
-				con.str.WriteString(" = ")
-				return con.visit(args[0])
-			case isListType(argType):
-				con.str.WriteString(" in UNNEST(")
-				if err := con.visit(args[0]); err != nil {
-					return err
-				}
-				con.str.WriteString(")")
-				return nil
-			}
-		case isListType(tgtType):
-			switch {
-			case argType.GetPrimitive() == exprpb.Type_STRING:
-				return con.callFilter(function, args[0], []*exprpb.Expr{target})
-			case isListType(argType):
-				//TODO: implement this
-			}
-		}
-	default:
-		return fmt.Errorf("unsupported filter: %v", function)
-	}
-	return fmt.Errorf("unsupported types: %v.(%v)", tgtType, argType)
-}
-
-func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
+func (con *Converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	target := c.GetTarget()
@@ -548,22 +520,24 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		overloads.TypeConvertString,
 		overloads.TypeConvertUint:
 		return con.callCasting(fun, target, args)
-	case filters.ExistsEquals,
-		filters.ExistsEqualsCI,
-		filters.ExistsRegexp,
-		filters.ExistsRegexpCI:
-		return con.callFilter(fun, target, args)
 	}
+
+	for _, ext := range con.extensions {
+		if ext.ImplementsFunction(fun) {
+			return ext.CallFunction(con, fun, target, args)
+		}
+	}
+
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {
 		if fun == overloads.Size {
-			argType := con.getType(args[0])
+			argType := con.GetType(args[0])
 			switch {
 			case argType.GetPrimitive() == exprpb.Type_STRING:
 				sqlFun = "LENGTH"
 			case argType.GetPrimitive() == exprpb.Type_BYTES:
 				sqlFun = "LENGTH"
-			case isListType(argType):
+			case IsListType(argType):
 				sqlFun = "ARRAY_LENGTH"
 			default:
 				return fmt.Errorf("unsupported type: %v", argType)
@@ -585,7 +559,7 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		}
 	}
 	for i, arg := range args {
-		err := con.visit(arg)
+		err := con.Visit(arg)
 		if err != nil {
 			return err
 		}
@@ -597,14 +571,14 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitCallIndex(expr *exprpb.Expr) error {
-	if isMapType(con.getType(expr.GetCallExpr().GetArgs()[0])) {
+func (con *Converter) visitCallIndex(expr *exprpb.Expr) error {
+	if IsMapType(con.GetType(expr.GetCallExpr().GetArgs()[0])) {
 		return con.visitCallMapIndex(expr)
 	}
 	return con.visitCallListIndex(expr)
 }
 
-func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
+func (con *Converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	m := args[0]
@@ -622,7 +596,7 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitCallListIndex(expr *exprpb.Expr) error {
+func (con *Converter) visitCallListIndex(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
 	l := args[0]
@@ -632,7 +606,7 @@ func (con *converter) visitCallListIndex(expr *exprpb.Expr) error {
 	}
 	con.str.WriteString("[OFFSET(")
 	index := args[1]
-	if err := con.visit(index); err != nil {
+	if err := con.Visit(index); err != nil {
 		return err
 	}
 	con.str.WriteString(")]")
@@ -643,7 +617,7 @@ var standardSQLUnaryOperators = map[string]string{
 	operators.LogicalNot: "NOT ",
 }
 
-func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
+func (con *Converter) visitCallUnary(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	args := c.GetArgs()
@@ -660,7 +634,7 @@ func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
 	return con.visitMaybeNested(args[0], nested)
 }
 
-func (con *converter) visitComprehension(expr *exprpb.Expr) error {
+func (con *Converter) visitComprehension(expr *exprpb.Expr) error {
 	// TODO: introduce a macro expansion map between the top-level comprehension id and the
 	// function call that the macro replaces.
 
@@ -672,14 +646,14 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 	// TODO: Test more extensively and add more checks.
 	e := expr.GetComprehensionExpr()
 	con.str.WriteString("EXISTS (SELECT * FROM UNNEST(")
-	con.visit(e.GetIterRange())
+	con.Visit(e.GetIterRange())
 	con.str.WriteString(fmt.Sprintf(") AS %s WHERE ", e.GetIterVar()))
-	con.visit(e.GetLoopStep().GetCallExpr().GetArgs()[1])
+	con.Visit(e.GetLoopStep().GetCallExpr().GetArgs()[1])
 	con.str.WriteString(")")
 	return nil
 }
 
-func getConstValue(expr *exprpb.Expr) (interface{}, error) {
+func GetConstValue(expr *exprpb.Expr) (interface{}, error) {
 	c := expr.GetConstExpr()
 	switch c.ConstantKind.(type) {
 	case *exprpb.Constant_BoolValue:
@@ -701,8 +675,8 @@ func getConstValue(expr *exprpb.Expr) (interface{}, error) {
 	}
 }
 
-func (con *converter) visitConst(expr *exprpb.Expr) error {
-	value, err := getConstValue(expr)
+func (con *Converter) visitConst(expr *exprpb.Expr) error {
+	value, err := GetConstValue(expr)
 	if err != nil {
 		return err
 	}
@@ -710,20 +684,20 @@ func (con *converter) visitConst(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitIdent(expr *exprpb.Expr) error {
+func (con *Converter) visitIdent(expr *exprpb.Expr) error {
 	con.str.WriteString("`")
 	con.str.WriteString(expr.GetIdentExpr().GetName())
 	con.str.WriteString("`")
 	return nil
 }
 
-func (con *converter) visitList(expr *exprpb.Expr) error {
+func (con *Converter) visitList(expr *exprpb.Expr) error {
 	// TODO: implement list support
 	l := expr.GetListExpr()
 	elems := l.GetElements()
 	con.str.WriteString("[")
 	for i, elem := range elems {
-		err := con.visit(elem)
+		err := con.Visit(elem)
 		if err != nil {
 			return err
 		}
@@ -735,7 +709,7 @@ func (con *converter) visitList(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitSelect(expr *exprpb.Expr) error {
+func (con *Converter) visitSelect(expr *exprpb.Expr) error {
 	sel := expr.GetSelectExpr()
 	// handle the case when the select expression was generated by the has() macro.
 	if sel.GetTestOnly() {
@@ -755,7 +729,7 @@ func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitStruct(expr *exprpb.Expr) error {
+func (con *Converter) visitStruct(expr *exprpb.Expr) error {
 	s := expr.GetStructExpr()
 	// If the message name is non-empty, then this should be treated as message construction.
 	if s.GetMessageName() != "" {
@@ -765,7 +739,7 @@ func (con *converter) visitStruct(expr *exprpb.Expr) error {
 	return con.visitStructMap(expr)
 }
 
-func (con *converter) visitStructMsg(expr *exprpb.Expr) error {
+func (con *Converter) visitStructMsg(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
 	con.str.WriteString(m.GetMessageName())
@@ -775,7 +749,7 @@ func (con *converter) visitStructMsg(expr *exprpb.Expr) error {
 		con.str.WriteString(f)
 		con.str.WriteString(": ")
 		v := entry.GetValue()
-		err := con.visit(v)
+		err := con.Visit(v)
 		if err != nil {
 			return err
 		}
@@ -787,13 +761,13 @@ func (con *converter) visitStructMsg(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitStructMap(expr *exprpb.Expr) error {
+func (con *Converter) visitStructMap(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
 	con.str.WriteString("STRUCT(")
 	for i, entry := range entries {
 		v := entry.GetValue()
-		if err := con.visit(v); err != nil {
+		if err := con.Visit(v); err != nil {
 			return err
 		}
 		con.str.WriteString(" AS ")
@@ -810,11 +784,11 @@ func (con *converter) visitStructMap(expr *exprpb.Expr) error {
 	return nil
 }
 
-func (con *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
+func (con *Converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
 	if nested {
 		con.str.WriteString("(")
 	}
-	err := con.visit(expr)
+	err := con.Visit(expr)
 	if err != nil {
 		return err
 	}
@@ -824,16 +798,16 @@ func (con *converter) visitMaybeNested(expr *exprpb.Expr, nested bool) error {
 	return nil
 }
 
-func (con *converter) getType(node *exprpb.Expr) *exprpb.Type {
+func (con *Converter) GetType(node *exprpb.Expr) *exprpb.Type {
 	return con.typeMap[node.GetId()]
 }
 
-func isMapType(typ *exprpb.Type) bool {
+func IsMapType(typ *exprpb.Type) bool {
 	_, ok := typ.TypeKind.(*exprpb.Type_MapType_)
 	return ok
 }
 
-func isListType(typ *exprpb.Type) bool {
+func IsListType(typ *exprpb.Type) bool {
 	_, ok := typ.TypeKind.(*exprpb.Type_ListType_)
 	return ok
 }
