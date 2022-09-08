@@ -175,19 +175,20 @@ func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args
 	if err != nil {
 		return err
 	}
-	con.WriteString(regexp)
+	//replace con.WriteValue with this if params don't work for some reason
+	//con.WriteString(fmt.Sprintf("%q", regexp))
+	con.WriteValue(regexp)
 	con.WriteString(")")
 	return nil
 }
 
 func buildRegex(expression *expr.Expr, opts regexpOptions) (string, error) {
 	builder := strings.Builder{}
-	builder.WriteString("r\"")
 	if opts.caseInsensitive {
 		builder.WriteString("(?i)")
 	}
 	if opts.start {
-		builder.WriteString("\\x00")
+		builder.WriteString("\x00")
 	}
 	builder.WriteString("(")
 
@@ -213,9 +214,8 @@ func buildRegex(expression *expr.Expr, opts regexpOptions) (string, error) {
 	}
 	builder.WriteString(")")
 	if opts.end {
-		builder.WriteString("\\x00")
+		builder.WriteString("\x00")
 	}
-	builder.WriteString("\"")
 	return builder.String(), nil
 }
 
