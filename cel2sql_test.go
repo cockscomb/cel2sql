@@ -431,14 +431,26 @@ func TestConvert(t *testing.T) {
 		},
 		{
 			name:    "filters_exists_equals",
-			args:    args{source: `"foo".existsEquals("bar") && "foo".existsEquals(["bar"]) && ["foo"].existsEquals("bar")`},
-			want:    "\"foo\" = \"bar\" AND \"foo\" in UNNEST([\"bar\"]) AND \"bar\" in UNNEST([\"foo\"])",
+			args:    args{source: `"foo".existsEquals("bar") && "foo".existsEquals(["bar"]) && ["foo"].existsEquals("bar") && ["foo"].existsEquals(["bar"])`},
+			want:    "\"foo\" = \"bar\" AND \"foo\" in UNNEST([\"bar\"]) AND \"bar\" in UNNEST([\"foo\"]) AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"\\x00(bar)\\x00\")",
 			wantErr: false,
 		},
 		{
 			name:    "filters_exists_equals_ci",
-			args:    args{source: `"foo".existsEqualsCI("bar") && "foo".existsEqualsCI(["bar"]) && ["foo"].existsEqualsCI("bar")`},
-			want:    "COLLATE(\"foo\", \"und:ci\") = \"bar\" AND COLLATE(\"foo\", \"und:ci\") in UNNEST([\"bar\"]) AND COLLATE(\"bar\", \"und:ci\") in UNNEST([\"foo\"])",
+			args:    args{source: `"foo".existsEqualsCI("bar") && "foo".existsEqualsCI(["bar"]) && ["foo"].existsEqualsCI("bar") && ["foo"].existsEqualsCI(["bar"])`},
+			want:    "COLLATE(\"foo\", \"und:ci\") = \"bar\" AND COLLATE(\"foo\", \"und:ci\") in UNNEST([\"bar\"]) AND COLLATE(\"bar\", \"und:ci\") in UNNEST([\"foo\"]) AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"(?i)\\x00(bar)\\x00\")",
+			wantErr: false,
+		},
+		{
+			name:    "filters_exists_regexp",
+			args:    args{source: `"foo".existsRegexp("bar") && "foo".existsRegexp(["bar"]) && ["foo"].existsRegexp("bar") && ["foo"].existsRegexp(["bar"])`},
+			want:    "REGEXP_CONTAINS(\"\\x00\" || \"foo\" || \"\\x00\", r\"((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || \"foo\" || \"\\x00\", r\"((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"((bar))\")",
+			wantErr: false,
+		},
+		{
+			name:    "filters_exists_regexp_ci",
+			args:    args{source: `"foo".existsRegexpCI("bar") && "foo".existsRegexpCI(["bar"]) && ["foo"].existsRegexpCI("bar") && ["foo"].existsRegexpCI(["bar"])`},
+			want:    "REGEXP_CONTAINS(\"\\x00\" || \"foo\" || \"\\x00\", r\"(?i)((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || \"foo\" || \"\\x00\", r\"(?i)((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"(?i)((bar))\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", r\"(?i)((bar))\")",
 			wantErr: false,
 		},
 	}
