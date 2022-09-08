@@ -654,6 +654,18 @@ func (con *Converter) visitComprehension(expr *exprpb.Expr) error {
 }
 
 func GetConstValue(expr *exprpb.Expr) (interface{}, error) {
+	if l := expr.GetListExpr(); l != nil {
+		elems := l.GetElements()
+		result := make([]interface{}, 0, len(elems))
+		for _, elem := range elems {
+			val, err := GetConstValue(elem)
+			if err != nil {
+				return nil, fmt.Errorf("can't get const value of list element: %w", err)
+			}
+			result = append(result, val)
+		}
+		return result, nil
+	}
 	c := expr.GetConstExpr()
 	switch c.ConstantKind.(type) {
 	case *exprpb.Constant_BoolValue:
