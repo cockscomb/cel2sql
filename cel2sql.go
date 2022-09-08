@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockscomb/cel2sql/filters"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/overloads"
@@ -474,6 +475,49 @@ func (con *converter) callCasting(function string, target *exprpb.Expr, args []*
 	return nil
 }
 
+// TODO:
+func (con *converter) callFilter(function string, target *exprpb.Expr, args []*exprpb.Expr) error {
+	tgtType := con.getType(target)
+	argType := con.getType(args[0])
+	switch function {
+	case filters.ExistsEquals, filters.ExistsEqualsCI:
+		switch {
+		case tgtType.GetPrimitive() == exprpb.Type_STRING:
+			if function == filters.ExistsEqualsCI {
+				con.str.WriteString("COLLATE(")
+			}
+			if err := con.visit(target); err != nil {
+				return err
+			}
+			if function == filters.ExistsEqualsCI {
+				con.str.WriteString(", \"und:ci\")")
+			}
+			switch {
+			case argType.GetPrimitive() == exprpb.Type_STRING:
+				con.str.WriteString(" = ")
+				return con.visit(args[0])
+			case isListType(argType):
+				con.str.WriteString(" in UNNEST(")
+				if err := con.visit(args[0]); err != nil {
+					return err
+				}
+				con.str.WriteString(")")
+				return nil
+			}
+		case isListType(tgtType):
+			switch {
+			case argType.GetPrimitive() == exprpb.Type_STRING:
+				return con.callFilter(function, args[0], []*exprpb.Expr{target})
+			case isListType(argType):
+				//TODO: implement this
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported filter: %v", function)
+	}
+	return fmt.Errorf("unsupported types: %v.(%v)", tgtType, argType)
+}
+
 func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
@@ -504,6 +548,11 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 		overloads.TypeConvertString,
 		overloads.TypeConvertUint:
 		return con.callCasting(fun, target, args)
+	case filters.ExistsEquals,
+		filters.ExistsEqualsCI,
+		filters.ExistsRegexp,
+		filters.ExistsRegexpCI:
+		return con.callFilter(fun, target, args)
 	}
 	sqlFun, ok := standardSQLFunctions[fun]
 	if !ok {

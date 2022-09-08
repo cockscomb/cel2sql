@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockscomb/cel2sql"
 	"github.com/cockscomb/cel2sql/bq"
+	"github.com/cockscomb/cel2sql/filters"
 	"github.com/cockscomb/cel2sql/sqltypes"
 	"github.com/cockscomb/cel2sql/test"
 )
@@ -38,6 +39,7 @@ func TestConvert(t *testing.T) {
 			decls.NewVar("trigram", decls.NewObjectType("trigrams")),
 			decls.NewVar("page", decls.NewObjectType("wikipedia")),
 		),
+		filters.Declarations,
 	)
 	require.NoError(t, err)
 	type args struct {
@@ -425,6 +427,18 @@ func TestConvert(t *testing.T) {
 			name:    "inplace_array_exists",
 			args:    args{source: `["foo", "bar"].exists(x, x == "foo")`},
 			want:    "EXISTS (SELECT * FROM UNNEST([\"foo\", \"bar\"]) AS x WHERE `x` = \"foo\")",
+			wantErr: false,
+		},
+		{
+			name:    "filters_exists_equals",
+			args:    args{source: `"foo".existsEquals("bar") && "foo".existsEquals(["bar"]) && ["foo"].existsEquals("bar")`},
+			want:    "\"foo\" = \"bar\" AND \"foo\" in UNNEST([\"bar\"]) AND \"bar\" in UNNEST([\"foo\"])",
+			wantErr: false,
+		},
+		{
+			name:    "filters_exists_equals_ci",
+			args:    args{source: `"foo".existsEqualsCI("bar") && "foo".existsEqualsCI(["bar"]) && ["foo"].existsEqualsCI("bar")`},
+			want:    "COLLATE(\"foo\", \"und:ci\") = \"bar\" AND COLLATE(\"foo\", \"und:ci\") in UNNEST([\"bar\"]) AND COLLATE(\"bar\", \"und:ci\") in UNNEST([\"foo\"])",
 			wantErr: false,
 		},
 	}
