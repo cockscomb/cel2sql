@@ -98,6 +98,10 @@ func (con *Converter) WriteString(s string) (int, error) {
 	return con.str.WriteString(s)
 }
 
+func (con *Converter) WriteValue(val interface{}) (int, error) {
+	return con.str.WriteString(con.valueTracker.AddValue(val))
+}
+
 func (con *Converter) Visit(expr *exprpb.Expr) error {
 	switch expr.ExprKind.(type) {
 	case *exprpb.Expr_CallExpr:
@@ -692,7 +696,7 @@ func (con *Converter) visitConst(expr *exprpb.Expr) error {
 	if err != nil {
 		return err
 	}
-	con.str.WriteString(con.valueTracker.AddValue(value))
+	con.WriteValue(value)
 	return nil
 }
 
