@@ -118,7 +118,7 @@ func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, targ
 				con.WriteString(" = ")
 				return con.Visit(args[0])
 			case cel2sql.IsListType(argType):
-				con.WriteString(" in UNNEST(")
+				con.WriteString(" IN UNNEST(")
 				if err := con.Visit(args[0]); err != nil {
 					return err
 				}
