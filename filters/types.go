@@ -140,7 +140,7 @@ func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, targ
 	case ExistsContains, ExistsContainsCI:
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsContainsCI, regexEscape: true})
 	case ExistsRegexp, ExistsRegexpCI:
-		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI})
+		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI, start: true, end: true})
 	default:
 		return fmt.Errorf("unsupported filter: %v", function)
 	}
