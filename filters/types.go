@@ -154,7 +154,7 @@ type regexpOptions struct {
 	regexEscape     bool
 }
 
-//REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(target, "\x00") || "\x00", r"\x00(arg1|arg2|arg3)\x00")
+// REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(target, "\x00") || "\x00", r"\x00(arg1|arg2|arg3)\x00")
 func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args []*expr.Expr, opts regexpOptions) error {
 	con.WriteString("REGEXP_CONTAINS(\"\\x00\" || ")
 	tgtType := con.GetType(target)
