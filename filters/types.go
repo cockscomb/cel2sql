@@ -202,8 +202,33 @@ func writeSimpleCall(sqlFunc string, con *cel2sql.Converter, function string, ta
 
 // REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(target, "\x00") || "\x00", r"\x00(arg1|arg2|arg3)\x00")
 func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args []*expr.Expr, opts regexpOptions) error {
-	con.WriteString("REGEXP_CONTAINS(\"\\x00\" || ")
+	// Special case for one value and non-slice fields.
 	tgtType := con.GetType(target)
+	argType := con.GetType(args[0])
+	if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
+		arg, err := cel2sql.GetConstValue(args[0])
+		if err != nil {
+			return fmt.Errorf("failed to get const value of regexp: %w", err)
+		}
+		re, ok := arg.(string)
+		if !ok {
+			return fmt.Errorf("regexp's value is %T, want a string", arg)
+		}
+		re = "^(" + re + ")$"
+		if opts.caseInsensitive {
+			re = "(?i)" + re
+		}
+		con.WriteString("REGEXP_CONTAINS(")
+		if err := con.Visit(target); err != nil {
+			return err
+		}
+		con.WriteString(", ")
+		con.WriteValue(re)
+		con.WriteString(")")
+		return nil
+	}
+
+	con.WriteString("REGEXP_CONTAINS(\"\\x00\" || ")
 	switch {
 	case tgtType.GetPrimitive() == expr.Type_STRING:
 		if err := con.Visit(target); err != nil {
