@@ -24,6 +24,14 @@ const (
 	ExistsRegexpCI   = "existsRegexpCI"
 )
 
+var ciFuncs = map[string]struct{}{
+	ExistsEqualsCI:   {},
+	ExistsStartsCI:   {},
+	ExistsEndsCI:     {},
+	ExistsContainsCI: {},
+	ExistsRegexpCI:   {},
+}
+
 var Declarations = cel.Declarations(
 	decls.NewFunction(ExistsEquals,
 		decls.NewInstanceOverload("string_to_string", []*expr.Type{decls.String, decls.String}, decls.Bool),
@@ -104,14 +112,8 @@ func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, targ
 	case ExistsEquals, ExistsEqualsCI:
 		switch {
 		case tgtType.GetPrimitive() == expr.Type_STRING:
-			if function == ExistsEqualsCI {
-				con.WriteString("COLLATE(")
-			}
-			if err := con.Visit(target); err != nil {
+			if err := writeTarget(con, function, target); err != nil {
 				return err
-			}
-			if function == ExistsEqualsCI {
-				con.WriteString(", \"und:ci\")")
 			}
 			switch {
 			case argType.GetPrimitive() == expr.Type_STRING:
@@ -134,10 +136,28 @@ func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, targ
 			}
 		}
 	case ExistsStarts, ExistsStartsCI:
+		if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
+			if err := writeSimpleCall("STARTS_WITH", con, function, target, args[0]); err != nil {
+				return err
+			}
+			return nil
+		}
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsStartsCI, start: true, regexEscape: true})
 	case ExistsEnds, ExistsEndsCI:
+		if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
+			if err := writeSimpleCall("ENDS_WITH", con, function, target, args[0]); err != nil {
+				return err
+			}
+			return nil
+		}
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEndsCI, end: true, regexEscape: true})
 	case ExistsContains, ExistsContainsCI:
+		if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
+			if err := writeSimpleCall("0 != INSTR", con, function, target, args[0]); err != nil {
+				return err
+			}
+			return nil
+		}
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsContainsCI, regexEscape: true})
 	case ExistsRegexp, ExistsRegexpCI:
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI, start: true, end: true})
@@ -152,6 +172,32 @@ type regexpOptions struct {
 	start           bool
 	end             bool
 	regexEscape     bool
+}
+
+func writeTarget(con *cel2sql.Converter, function string, target *expr.Expr) error {
+	if _, has := ciFuncs[function]; has {
+		con.WriteString("COLLATE(")
+	}
+	if err := con.Visit(target); err != nil {
+		return err
+	}
+	if _, has := ciFuncs[function]; has {
+		con.WriteString(", \"und:ci\")")
+	}
+	return nil
+}
+
+func writeSimpleCall(sqlFunc string, con *cel2sql.Converter, function string, target, arg *expr.Expr) error {
+	con.WriteString(sqlFunc + "(")
+	if err := writeTarget(con, function, target); err != nil {
+		return err
+	}
+	con.WriteString(", ")
+	if err := con.Visit(arg); err != nil {
+		return err
+	}
+	con.WriteString(")")
+	return nil
 }
 
 // REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(target, "\x00") || "\x00", r"\x00(arg1|arg2|arg3)\x00")
