@@ -106,21 +106,25 @@ func (ext *Extension) ImplementsFunction(fun string) bool {
 }
 
 func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, target *expr.Expr, args []*expr.Expr) error {
-	tgtType := con.GetType(target)
-	argType := con.GetType(args[0])
-
-	if cel2sql.IsListType(argType) {
-		arg, err := cel2sql.GetConstValue(args[0])
-		if err != nil {
-			return fmt.Errorf("failed to get const value of arg: %w", err)
-		}
-		list := arg.([]interface{}) // Must be a list, because cel2sql.IsListType(argType) is true.
-		if len(list) == 0 {
+	// Optimization: exists*([x]) = exists*(x)
+	if cel2sql.IsListType(con.GetType(args[0])) {
+		list := args[0].ExprKind.(*expr.Expr_ListExpr).ListExpr
+		if len(list.Elements) == 0 {
 			con.WriteString("FALSE")
 			return nil
 		}
+		if len(list.Elements) == 1 {
+			args = []*expr.Expr{
+				list.Elements[0],
+			}
+		}
 	}
+	return ext.callFunction(con, function, target, args)
+}
 
+func (ext *Extension) callFunction(con *cel2sql.Converter, function string, target *expr.Expr, args []*expr.Expr) error {
+	tgtType := con.GetType(target)
+	argType := con.GetType(args[0])
 	switch function {
 	case ExistsEquals, ExistsEqualsCI:
 		switch {
@@ -143,7 +147,7 @@ func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, targ
 		case cel2sql.IsListType(tgtType):
 			switch {
 			case argType.GetPrimitive() == expr.Type_STRING:
-				return ext.CallFunction(con, function, args[0], []*expr.Expr{target})
+				return ext.callFunction(con, function, args[0], []*expr.Expr{target})
 			case cel2sql.IsListType(argType):
 				return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEqualsCI, start: true, end: true, regexEscape: true})
 			}
