@@ -46,10 +46,11 @@ func TestConvert(t *testing.T) {
 		source string
 	}
 	tests := []struct {
-		name    string
-		args    args
-		want    string
-		wantErr bool
+		name           string
+		args           args
+		want           string
+		wantCompileErr bool
+		wantErr        bool
 	}{
 		{
 			name:    "startsWith",
@@ -453,12 +454,21 @@ func TestConvert(t *testing.T) {
 			want:    "REGEXP_CONTAINS(\"foo\", \"(?i)^(bar)$\") AND REGEXP_CONTAINS(\"\\x00\" || \"foo\" || \"\\x00\", \"(?i)\\x00((bar))\\x00\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", \"(?i)\\x00((bar))\\x00\") AND REGEXP_CONTAINS(\"\\x00\" || ARRAY_TO_STRING([\"foo\"], \"\\x00\") || \"\\x00\", \"(?i)\\x00((bar))\\x00\")",
 			wantErr: false,
 		},
+		{
+			name:           "filters_no_args",
+			args:           args{source: `"foo".existsEquals() && "foo".existsStartsCI() && ["foo"].existsEnds() && ["foo"].existsContainsCI() && "foo".existsRegexp()`},
+			wantCompileErr: true,
+		},
 	}
 
 	tracker := bq.NewBigQueryNamedTracker()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ast, issues := env.Compile(tt.args.source)
+			if tt.wantCompileErr {
+				require.NotEmpty(t, issues)
+				return
+			}
 			require.Empty(t, issues)
 
 			got, err := cel2sql.Convert(ast, cel2sql.WithExtension(&filters.Extension{}))
