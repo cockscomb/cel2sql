@@ -149,7 +149,7 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 			case argType.GetPrimitive() == expr.Type_STRING:
 				return ext.callFunction(con, function, args[0], []*expr.Expr{target})
 			case cel2sql.IsListType(argType):
-				return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEqualsCI, start: true, end: true, regexEscape: true})
+				return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEqualsCI, startAnchor: true, endAnchor: true, regexEscape: true})
 			}
 		}
 	case ExistsStarts, ExistsStartsCI:
@@ -159,7 +159,7 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 			}
 			return nil
 		}
-		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsStartsCI, start: true, regexEscape: true})
+		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsStartsCI, startAnchor: true, regexEscape: true})
 	case ExistsEnds, ExistsEndsCI:
 		if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
 			if err := writeSimpleCall("ENDS_WITH", con, function, target, args[0]); err != nil {
@@ -167,7 +167,7 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 			}
 			return nil
 		}
-		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEndsCI, end: true, regexEscape: true})
+		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsEndsCI, endAnchor: true, regexEscape: true})
 	case ExistsContains, ExistsContainsCI:
 		if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
 			if err := writeSimpleCall("0 != INSTR", con, function, target, args[0]); err != nil {
@@ -177,7 +177,7 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 		}
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsContainsCI, regexEscape: true})
 	case ExistsRegexp, ExistsRegexpCI:
-		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI, start: true, end: true})
+		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI, startAnchor: true, endAnchor: true})
 	default:
 		return fmt.Errorf("unsupported filter: %v", function)
 	}
@@ -186,8 +186,8 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 
 type regexpOptions struct {
 	caseInsensitive bool
-	start           bool
-	end             bool
+	startAnchor     bool
+	endAnchor       bool
 	regexEscape     bool
 }
 
@@ -219,33 +219,13 @@ func writeSimpleCall(sqlFunc string, con *cel2sql.Converter, function string, ta
 
 // REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(target, "\x00") || "\x00", r"\x00(arg1|arg2|arg3)\x00")
 func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args []*expr.Expr, opts regexpOptions) error {
-	// Special case for one value and non-slice fields.
 	tgtType := con.GetType(target)
-	argType := con.GetType(args[0])
-	if tgtType.GetPrimitive() == expr.Type_STRING && argType.GetPrimitive() == expr.Type_STRING {
-		arg, err := cel2sql.GetConstValue(args[0])
-		if err != nil {
-			return fmt.Errorf("failed to get const value of regexp: %w", err)
-		}
-		re, ok := arg.(string)
-		if !ok {
-			return fmt.Errorf("regexp's value is %T, want a string", arg)
-		}
-		re = "^(" + re + ")$"
-		if opts.caseInsensitive {
-			re = "(?i)" + re
-		}
-		con.WriteString("REGEXP_CONTAINS(")
-		if err := con.Visit(target); err != nil {
-			return err
-		}
-		con.WriteString(", ")
-		con.WriteValue(re)
-		con.WriteString(")")
-		return nil
-	}
+	useZeroes := cel2sql.IsListType(tgtType)
 
-	con.WriteString("REGEXP_CONTAINS(\"\\x00\" || ")
+	con.WriteString("REGEXP_CONTAINS(")
+	if opts.startAnchor && useZeroes {
+		con.WriteString("\"\\x00\" || ")
+	}
 	switch {
 	case tgtType.GetPrimitive() == expr.Type_STRING:
 		if err := con.Visit(target); err != nil {
@@ -258,8 +238,11 @@ func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args
 		}
 		con.WriteString(", \"\\x00\")")
 	}
-	con.WriteString(" || \"\\x00\", ")
-	regexp, err := buildRegex(args[0], opts)
+	if opts.endAnchor && useZeroes {
+		con.WriteString(" || \"\\x00\"")
+	}
+	con.WriteString(", ")
+	regexp, err := buildRegex(args[0], opts, useZeroes)
 	if err != nil {
 		return err
 	}
@@ -270,13 +253,17 @@ func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args
 	return nil
 }
 
-func buildRegex(expression *expr.Expr, opts regexpOptions) (string, error) {
+func buildRegex(expression *expr.Expr, opts regexpOptions, useZeroes bool) (string, error) {
 	builder := strings.Builder{}
 	if opts.caseInsensitive {
 		builder.WriteString("(?i)")
 	}
-	if opts.start {
-		builder.WriteString("\x00")
+	if opts.startAnchor {
+		if useZeroes {
+			builder.WriteString("\x00")
+		} else {
+			builder.WriteString("^")
+		}
 	}
 	builder.WriteString("(")
 
@@ -301,8 +288,12 @@ func buildRegex(expression *expr.Expr, opts regexpOptions) (string, error) {
 		return "", fmt.Errorf("wrong const value: %v", value)
 	}
 	builder.WriteString(")")
-	if opts.end {
-		builder.WriteString("\x00")
+	if opts.endAnchor {
+		if useZeroes {
+			builder.WriteString("\x00")
+		} else {
+			builder.WriteString("$")
+		}
 	}
 	return builder.String(), nil
 }
