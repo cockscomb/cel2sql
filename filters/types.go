@@ -108,6 +108,19 @@ func (ext *Extension) ImplementsFunction(fun string) bool {
 func (ext *Extension) CallFunction(con *cel2sql.Converter, function string, target *expr.Expr, args []*expr.Expr) error {
 	tgtType := con.GetType(target)
 	argType := con.GetType(args[0])
+
+	if cel2sql.IsListType(argType) {
+		arg, err := cel2sql.GetConstValue(args[0])
+		if err != nil {
+			return fmt.Errorf("failed to get const value of arg: %w", err)
+		}
+		list := arg.([]interface{}) // Must be a list, because cel2sql.IsListType(argType) is true.
+		if len(list) == 0 {
+			con.WriteString("FALSE")
+			return nil
+		}
+	}
+
 	switch function {
 	case ExistsEquals, ExistsEqualsCI:
 		switch {
