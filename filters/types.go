@@ -312,6 +312,9 @@ func preprocessRegexp(pattern string, useZeroes bool) string {
 }
 
 func joinRegexps(patterns []string, escapeItems bool) string {
+	if len(patterns) == 1 && !escapeItems {
+		return patterns[0]
+	}
 	parts := make([]string, 0, len(patterns))
 	for _, p := range patterns {
 		if escapeItems {
