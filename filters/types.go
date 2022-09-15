@@ -20,8 +20,8 @@ const (
 	ExistsEndsCI     = "existsEndsCI"
 	ExistsContains   = "existsContains"
 	ExistsContainsCI = "existsContainsCI"
-	ExistsRegexp     = "existsRegexp"
-	ExistsRegexpCI   = "existsRegexpCI"
+	ExistsRegexp     = "existsRegexp"   // REGEXP_CONTAINS, not anchored.
+	ExistsRegexpCI   = "existsRegexpCI" // REGEXP_CONTAINS, not anchored.
 )
 
 var ciFuncs = map[string]struct{}{
@@ -177,7 +177,7 @@ func (ext *Extension) callFunction(con *cel2sql.Converter, function string, targ
 		}
 		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsContainsCI, regexEscape: true})
 	case ExistsRegexp, ExistsRegexpCI:
-		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI, startAnchor: true, endAnchor: true})
+		return ext.callRegexp(con, target, args, regexpOptions{caseInsensitive: function == ExistsRegexpCI})
 	default:
 		return fmt.Errorf("unsupported filter: %v", function)
 	}
@@ -223,7 +223,7 @@ func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args
 	useZeroes := cel2sql.IsListType(tgtType)
 
 	con.WriteString("REGEXP_CONTAINS(")
-	if opts.startAnchor && useZeroes {
+	if useZeroes {
 		con.WriteString("\"\\x00\" || ")
 	}
 	switch {
@@ -238,7 +238,7 @@ func (ext *Extension) callRegexp(con *cel2sql.Converter, target *expr.Expr, args
 		}
 		con.WriteString(", \"\\x00\")")
 	}
-	if opts.endAnchor && useZeroes {
+	if useZeroes {
 		con.WriteString(" || \"\\x00\"")
 	}
 	con.WriteString(", ")
@@ -273,12 +273,12 @@ func buildRegex(expression *expr.Expr, opts regexpOptions, useZeroes bool) (stri
 	}
 	switch value := arg.(type) {
 	case string:
-		builder.WriteString(joinRegexps([]string{value}, opts.regexEscape))
+		builder.WriteString(joinRegexps([]string{preprocessRegexp(value, useZeroes)}, opts.regexEscape))
 	case []interface{}:
 		patterns := make([]string, 0, len(value))
 		for _, val := range value {
 			if pattern, ok := val.(string); ok {
-				patterns = append(patterns, pattern)
+				patterns = append(patterns, preprocessRegexp(pattern, useZeroes))
 			} else {
 				return "", fmt.Errorf("wrong const value: %v", pattern)
 			}
@@ -296,6 +296,19 @@ func buildRegex(expression *expr.Expr, opts regexpOptions, useZeroes bool) (stri
 		}
 	}
 	return builder.String(), nil
+}
+
+func preprocessRegexp(pattern string, useZeroes bool) string {
+	if !useZeroes {
+		return pattern
+	}
+	if strings.HasPrefix(pattern, "^") {
+		pattern = "\x00" + pattern[1:]
+	}
+	if strings.HasSuffix(pattern, "$") {
+		pattern = pattern[:len(pattern)-1] + "\x00"
+	}
+	return pattern
 }
 
 func joinRegexps(patterns []string, escapeItems bool) string {

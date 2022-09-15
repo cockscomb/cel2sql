@@ -382,22 +382,22 @@ func TestConvert(t *testing.T) {
 		{
 			name: "filters_exists_regexp",
 			args: args{source: `"foo".existsRegexp("bar") && "foo".existsRegexp(["bar"]) && ["foo"].existsRegexp("bar") && ["foo"].existsRegexp(["bar"])`},
-			want: `REGEXP_CONTAINS("foo", "^((bar))$") AND REGEXP_CONTAINS("foo", "^((bar))$") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "\x00((bar))\x00") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "\x00((bar))\x00")`,
+			want: `REGEXP_CONTAINS("foo", "((bar))") AND REGEXP_CONTAINS("foo", "((bar))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "((bar))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "((bar))")`,
 		},
 		{
 			name: "filters_exists_regexp_ci",
-			args: args{source: `"foo".existsRegexpCI("bar") && "foo".existsRegexpCI(["bar"]) && ["foo"].existsRegexpCI("bar") && ["foo"].existsRegexpCI(["bar"])`},
-			want: `REGEXP_CONTAINS("foo", "(?i)^((bar))$") AND REGEXP_CONTAINS("foo", "(?i)^((bar))$") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)\x00((bar))\x00") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)\x00((bar))\x00")`,
+			args: args{source: `"foo".existsRegexpCI("bar") && "foo".existsRegexpCI(["^bar$"]) && ["foo"].existsRegexpCI("^bar") && ["foo"].existsRegexpCI(["bar$"])`},
+			want: `REGEXP_CONTAINS("foo", "(?i)((bar))") AND REGEXP_CONTAINS("foo", "(?i)((^bar$))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)((\x00bar))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)((bar\x00))")`,
 		},
 		{
 			name: "filters_exists_regexp_many_patterns",
-			args: args{source: `"foo".existsRegexp(["bar", "zoo"]) && ["foo"].existsRegexp(["bar", "zoo"])`},
-			want: `REGEXP_CONTAINS("foo", "^((bar)|(zoo))$") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "\x00((bar)|(zoo))\x00")`,
+			args: args{source: `"foo".existsRegexp(["bar", "zoo"]) && ["foo"].existsRegexp(["^bar$", "^zoo$"])`},
+			want: `REGEXP_CONTAINS("foo", "((bar)|(zoo))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "((\x00bar\x00)|(\x00zoo\x00))")`,
 		},
 		{
 			name: "filters_exists_regexp_many_patterns_ci",
-			args: args{source: `"foo".existsRegexpCI(["bar", "zoo"]) && ["foo"].existsRegexpCI(["bar", "zoo"])`},
-			want: `REGEXP_CONTAINS("foo", "(?i)^((bar)|(zoo))$") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)\x00((bar)|(zoo))\x00")`,
+			args: args{source: `"foo".existsRegexpCI(["^bar", "^zoo"]) && ["foo"].existsRegexpCI(["^bar$", "zoo"])`},
+			want: `REGEXP_CONTAINS("foo", "(?i)((^bar)|(^zoo))") AND REGEXP_CONTAINS("\x00" || ARRAY_TO_STRING(["foo"], "\x00") || "\x00", "(?i)((\x00bar\x00)|(zoo))")`,
 		},
 		{
 			name:           "filters_no_args",
